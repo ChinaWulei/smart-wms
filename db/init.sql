@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS inbound_order_items (
   warehouse_id BIGINT NOT NULL,
   location_id BIGINT NOT NULL,
   quantity INT,
+  received_quantity INT DEFAULT 0,
   created_at DATETIME,
   updated_at DATETIME,
   CONSTRAINT fk_in_item_order FOREIGN KEY (order_id) REFERENCES inbound_orders(id),

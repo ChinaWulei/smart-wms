@@ -84,18 +84,17 @@ public class InventoryService {
             Product product = product(line.productId());
             Warehouse warehouse = warehouse(line.warehouseId());
             StorageLocation location = location(line.locationId());
-            adjustStock(product, warehouse, location, line.quantity(), MovementType.INBOUND, order.getOrderNo(), request.operatorName());
+            validateLocationWarehouse(location, warehouse);
             InboundOrderItem item = new InboundOrderItem();
             item.setOrder(order);
             item.setProduct(product);
             item.setWarehouse(warehouse);
             item.setLocation(location);
             item.setQuantity(line.quantity());
-            item.setReceivedQuantity(line.quantity());
+            item.setReceivedQuantity(0);
             order.getItems().add(item);
         }
-        order.setStatus(OrderStatus.COMPLETED);
-        order.setCompletedAt(LocalDateTime.now());
+        order.setStatus(OrderStatus.CREATED);
         return inboundOrderRepository.save(order);
     }
 
@@ -110,7 +109,7 @@ public class InventoryService {
             Product product = product(line.productId());
             Warehouse warehouse = warehouse(line.warehouseId());
             StorageLocation location = location(line.locationId());
-            adjustStock(product, warehouse, location, -line.quantity(), MovementType.OUTBOUND, order.getOrderNo(), request.operatorName());
+            validateLocationWarehouse(location, warehouse);
             OutboundOrderItem item = new OutboundOrderItem();
             item.setOrder(order);
             item.setProduct(product);
@@ -119,8 +118,7 @@ public class InventoryService {
             item.setQuantity(line.quantity());
             order.getItems().add(item);
         }
-        order.setStatus(OrderStatus.COMPLETED);
-        order.setCompletedAt(LocalDateTime.now());
+        order.setStatus(OrderStatus.CREATED);
         return outboundOrderRepository.save(order);
     }
 
@@ -240,6 +238,15 @@ public class InventoryService {
         productRepository.save(product);
         movementRepository.save(movement(product, warehouse, location, movementType, Math.abs(delta), before, after, sourceNo, operator));
         refreshAlert(product);
+    }
+
+    private void validateLocationWarehouse(StorageLocation location, Warehouse warehouse) {
+        if (!warehouse.getId().equals(location.getWarehouse().getId())) {
+            throw new BizException("Location does not belong to selected warehouse");
+        }
+        if (location.getStatus() == LocationStatus.DISABLED) {
+            throw new BizException("Location is disabled");
+        }
     }
 
     private Stock findOrCreateStock(Product product, Warehouse warehouse, StorageLocation location) {

@@ -5,6 +5,7 @@ button, input, select { font: inherit; }
 button { min-height: 44px; border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 0 14px; cursor: pointer; }
 button:disabled { opacity: .62; cursor: not-allowed; }
 button.primary { background: #1769aa; border-color: #1769aa; color: #fff; }
+button.danger { color: #b42318; border-color: #f0b4ae; }
 button.active { border-color: #1769aa; background: #e8f2fb; color: #0f4f82; font-weight: 700; }
 input, select { width: 100%; min-height: 44px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 11px; background: #fff; outline: none; }
 input:focus, select:focus { border-color: #1769aa; box-shadow: 0 0 0 3px rgba(23, 105, 170, .18); }
@@ -34,8 +35,15 @@ h1, h2, h3, p { margin: 0; }
 .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
 .panel-head h2 { font-size: 18px; }
+.head-actions { display: flex; gap: 8px; }
 .form-grid, .filters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.order-create-panel { max-width: 1000px; margin: 0 auto; }
+.order-main-fields .remark-field { grid-column: span 2; }
+.order-lines-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 20px; }
+.order-lines-head h3 { font-size: 16px; }
+.order-lines { display: grid; gap: 10px; margin-top: 10px; }
+.order-line { display: grid; grid-template-columns: 1.4fr 1fr 1.2fr .55fr auto; align-items: end; gap: 8px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; }
 .code-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; max-height: 260px; overflow: auto; }
 .code-list b { width: 100%; }
 .code-list span { background: #f0f8f5; border: 1px solid #cfe5da; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
@@ -73,6 +81,9 @@ label.disabled { opacity: .78; }
   .module-grid { grid-template-columns: repeat(2, 1fr); }
   .submodule-panel { grid-template-columns: repeat(2, 1fr); }
   .form-grid, .filters, .cards, .scan-result { grid-template-columns: 1fr; }
+  .order-main-fields .remark-field { grid-column: auto; }
+  .order-line { grid-template-columns: 1fr; }
+  .head-actions { flex-wrap: wrap; justify-content: flex-end; }
   .order-info { grid-template-columns: 1fr; }
   .top { align-items: stretch; }
   .top button { width: 92px; }

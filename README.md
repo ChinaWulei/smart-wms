@@ -19,6 +19,23 @@ cd smart-wms
 docker compose up --build
 ```
 
+前后端分开部署：
+
+```bash
+# 后端和 MySQL
+docker compose -f docker-compose.backend.yml up -d --build
+
+# 前端，VITE_API_BASE 必须是浏览器能够访问的后端地址
+VITE_API_BASE=http://你的后端地址:8080/api docker compose -f docker-compose.frontend.yml up -d --build
+```
+
+Windows PowerShell 中部署前端：
+
+```powershell
+$env:VITE_API_BASE="http://你的后端地址:8080/api"
+docker compose -f docker-compose.frontend.yml up -d --build
+```
+
 访问：
 
 - 前端：http://localhost

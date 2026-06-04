@@ -45,13 +45,77 @@
         <div v-else-if="placeholderView" class="empty-state">{{ placeholderView }} - {{ text.phaseHint }}</div>
 
         <section v-if="view === 'inbound-orders'" class="panel">
-          <div class="panel-head"><h2>{{ labels.inboundOrders }}</h2><button @click="loadInboundOrders">{{ text.refresh }}</button></div>
+          <div class="panel-head">
+            <h2>{{ labels.inboundOrders }}</h2>
+            <div class="head-actions"><button class="primary" @click="openView('inbound-create')">{{ labels.createInbound }}</button><button @click="loadInboundOrders">{{ text.refresh }}</button></div>
+          </div>
           <div class="cards">
             <article v-for="o in inboundOrders" :key="o.id" class="location-card">
               <b>{{ o.orderNo }}</b>
               <span>{{ typeName(o.type) }} / {{ orderStatus(o.status) }}</span>
               <em>{{ o.operatorName || '-' }} / {{ o.items?.length || 0 }} SKU</em>
             </article>
+          </div>
+        </section>
+
+        <section v-if="view === 'outbound-orders'" class="panel">
+          <div class="panel-head">
+            <h2>{{ labels.outboundOrders }}</h2>
+            <div class="head-actions"><button class="primary" @click="openView('outbound-create')">{{ labels.createOutbound }}</button><button @click="loadOutboundOrders">{{ text.refresh }}</button></div>
+          </div>
+          <div class="cards">
+            <article v-for="o in outboundOrders" :key="o.id" class="location-card">
+              <b>{{ o.orderNo }}</b>
+              <span>{{ typeName(o.type) }} / {{ orderStatus(o.status) }}</span>
+              <em>{{ o.operatorName || '-' }} / {{ o.items?.length || 0 }} SKU</em>
+            </article>
+          </div>
+        </section>
+
+        <section v-if="view === 'inbound-create' || view === 'outbound-create'" class="panel order-create-panel">
+          <div class="panel-head">
+            <h2>{{ isInboundCreate ? labels.createInbound : labels.createOutbound }}</h2>
+            <button @click="openView(isInboundCreate ? 'inbound-orders' : 'outbound-orders')">{{ text.back }}</button>
+          </div>
+          <div class="form-grid order-main-fields">
+            <label>{{ labels.orderType }}
+              <select v-model="orderForm.type">
+                <option v-for="option in currentOrderTypes" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+            </label>
+            <label>{{ labels.operator }}<input v-model.trim="orderForm.operatorName"></label>
+            <label class="remark-field">{{ labels.remark }}<input v-model.trim="orderForm.remark"></label>
+          </div>
+          <div class="order-lines-head">
+            <h3>{{ labels.orderItems }}</h3>
+            <button @click="addOrderLine">{{ labels.addItem }}</button>
+          </div>
+          <div class="order-lines">
+            <div v-for="(line, index) in orderForm.items" :key="line.key" class="order-line">
+              <label>{{ labels.product }}
+                <select v-model.number="line.productId">
+                  <option :value="null">{{ text.select }}</option>
+                  <option v-for="p in products" :key="p.id" :value="p.id">{{ p.sku }} / {{ p.name }}</option>
+                </select>
+              </label>
+              <label>{{ labels.warehouse }}
+                <select v-model.number="line.warehouseId" @change="line.locationId = null">
+                  <option :value="null">{{ text.select }}</option>
+                  <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
+                </select>
+              </label>
+              <label>{{ labels.locationCode }}
+                <select v-model.number="line.locationId">
+                  <option :value="null">{{ text.select }}</option>
+                  <option v-for="l in locationsForWarehouse(line.warehouseId)" :key="l.id" :value="l.id">{{ l.code }}</option>
+                </select>
+              </label>
+              <label>{{ labels.qty }}<input v-model.number="line.quantity" type="number" min="1"></label>
+              <button class="danger" :disabled="orderForm.items.length === 1" @click="removeOrderLine(index)">{{ labels.removeItem }}</button>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="primary" :disabled="loading.order" @click="createOrder">{{ loading.order ? text.submitting : labels.submitOrder }}</button>
           </div>
         </section>
 
@@ -214,6 +278,16 @@ const text = {
 }
 const labels = {
   inboundOrders: '\u5165\u5e93\u8ba2\u5355',
+  outboundOrders: '\u51fa\u5e93\u8ba2\u5355',
+  createInbound: '\u65b0\u5efa\u5165\u5e93\u5355',
+  createOutbound: '\u65b0\u5efa\u51fa\u5e93\u5355',
+  orderType: '\u8ba2\u5355\u7c7b\u578b',
+  operator: '\u64cd\u4f5c\u4eba',
+  orderItems: '\u8ba2\u5355\u660e\u7ec6',
+  addItem: '\u6dfb\u52a0\u660e\u7ec6',
+  removeItem: '\u5220\u9664',
+  submitOrder: '\u63d0\u4ea4\u8ba2\u5355',
+  product: '\u5546\u54c1',
   shelfCreate: '\u521b\u5efa\u8d27\u67b6',
   warehouse: '\u6240\u5c5e\u4ed3\u5e93',
   shelfCode: '\u8d27\u67b6\u5927\u6807\u8bc6\u53f7',
@@ -252,8 +326,8 @@ const labels = {
   stockFlow: '\u5e93\u5b58\u6d41\u6c34'
 }
 const modules = [
-  module('inbound', '\u5165\u5e93\u6a21\u5757', '\u5165', [['inbound-orders', labels.inboundOrders], ['receiving', labels.receiving], ['inbound-records', '\u5165\u5e93\u8bb0\u5f55'], ['inbound-errors', '\u5165\u5e93\u5f02\u5e38']]),
-  module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', '\u51fa\u5e93\u8ba2\u5355'], ['picking', '\u62e3\u8d27\u51fa\u5e93'], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55'], ['outbound-errors', '\u51fa\u5e93\u5f02\u5e38']]),
+  module('inbound', '\u5165\u5e93\u6a21\u5757', '\u5165', [['inbound-orders', labels.inboundOrders], ['inbound-create', labels.createInbound], ['receiving', labels.receiving], ['inbound-records', '\u5165\u5e93\u8bb0\u5f55']]),
+  module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', labels.outboundOrders], ['outbound-create', labels.createOutbound], ['picking', '\u62e3\u8d27\u51fa\u5e93'], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55']]),
   module('stock', '\u5e93\u5b58\u7ba1\u7406', '\u5b58', [['stock-query', labels.stockQuery], ['stock-flow', labels.stockFlow], ['stock-adjust', '\u5e93\u5b58\u8c03\u6574'], ['stock-distribution', '\u5546\u54c1\u5e93\u5b58\u5206\u5e03']]),
   module('shelf', '\u8d27\u67b6\u7ba1\u7406', '\u67b6', [['shelf-create', labels.shelfCreate], ['shelf-list', '\u8d27\u67b6\u5217\u8868'], ['location-query', labels.locationQuery], ['label-print', '\u8d27\u67b6\u7801\u6253\u5370']]),
   module('product', '\u5546\u54c1\u7ba1\u7406', '\u54c1', [['product-list', '\u5546\u54c1\u5217\u8868'], ['product-create', '\u65b0\u589e\u5546\u54c1'], ['product-category', '\u5546\u54c1\u5206\u7c7b'], ['barcode', '\u6761\u7801\u7ba1\u7406']]),
@@ -273,9 +347,11 @@ const activeModule = ref('')
 const view = ref('home')
 const warehouses = ref([])
 const locations = ref([])
+const products = ref([])
 const stocks = ref([])
 const movements = ref([])
 const inboundOrders = ref([])
+const outboundOrders = ref([])
 const dashboard = ref({})
 const inboundOrder = ref(null)
 const shelfPreview = ref([])
@@ -283,10 +359,11 @@ const qtyMode = ref('fixed')
 const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
 const toast = reactive({ text: '', type: 'success' })
-const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false })
+const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
 const receiveForm = reactive({ orderNo: '', locationCode: '', productCode: '', quantity: 1 })
+const orderForm = reactive({ type: 'PURCHASE', operatorName: '', remark: '', items: [] })
 const scanResult = reactive({ location: null, product: null })
 const refs = { orderNo: ref(null), locationCode: ref(null), productCode: ref(null), quantity: ref(null), confirm: ref(null) }
 const orderNoRef = refs.orderNo
@@ -296,8 +373,23 @@ const quantityRef = refs.quantity
 const confirmRef = refs.confirm
 
 const currentSubmodules = computed(() => modules.find(m => m.key === activeModule.value)?.subs || [])
+const isInboundCreate = computed(() => view.value === 'inbound-create')
+const currentOrderTypes = computed(() => isInboundCreate.value
+  ? [
+      { value: 'PURCHASE', label: '\u91c7\u8d2d\u5165\u5e93' },
+      { value: 'RETURN', label: '\u9000\u8d27\u5165\u5e93' },
+      { value: 'TRANSFER', label: '\u8c03\u62e8\u5165\u5e93' },
+      { value: 'INVENTORY_GAIN', label: '\u76d8\u76c8\u5165\u5e93' }
+    ]
+  : [
+      { value: 'SALE', label: '\u9500\u552e\u51fa\u5e93' },
+      { value: 'REQUISITION', label: '\u9886\u7528\u51fa\u5e93' },
+      { value: 'TRANSFER', label: '\u8c03\u62e8\u51fa\u5e93' },
+      { value: 'DAMAGE', label: '\u62a5\u635f\u51fa\u5e93' },
+      { value: 'INVENTORY_LOSS', label: '\u76d8\u4e8f\u51fa\u5e93' }
+    ])
 const placeholderView = computed(() => {
-  if (['home', 'inbound-orders', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow'].includes(view.value)) return ''
+  if (['home', 'inbound-orders', 'outbound-orders', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow'].includes(view.value)) return ''
   return currentSubmodules.value.find(s => s.key === view.value)?.label || ''
 })
 const overviewCards = computed(() => [
@@ -326,9 +418,9 @@ function logout() {
   nextTick(() => loginUserRef.value?.focus())
 }
 async function bootstrap() {
-  warehouses.value = await api.get('/warehouses')
+  await Promise.all([loadWarehouses(), loadProducts(), loadAllLocations()])
   dashboard.value = await api.get('/dashboard').catch(() => ({}))
-  await loadInboundOrders().catch(() => {})
+  await Promise.all([loadInboundOrders().catch(() => {}), loadOutboundOrders().catch(() => {})])
 }
 function toggleModule(key) {
   activeModule.value = activeModule.value === key ? '' : key
@@ -336,14 +428,55 @@ function toggleModule(key) {
 async function openView(key) {
   view.value = key
   if (key === 'inbound-orders') await loadInboundOrders()
+  if (key === 'outbound-orders') await loadOutboundOrders()
+  if (key === 'inbound-create' || key === 'outbound-create') resetOrderForm(key)
   if (key === 'location-query') await loadLocations()
   if (key === 'stock-query') await loadStocks()
   if (key === 'stock-flow') await loadMovements()
   if (key === 'receiving') nextTick(() => focusField('orderNo'))
 }
 async function loadInboundOrders() { inboundOrders.value = await api.get('/inbound') }
+async function loadOutboundOrders() { outboundOrders.value = await api.get('/outbound') }
+async function loadWarehouses() { warehouses.value = await api.get('/warehouses') }
+async function loadProducts() { products.value = await api.get('/products') }
+async function loadAllLocations() { locations.value = await api.get('/locations') }
 async function loadStocks() { stocks.value = await api.get('/stocks') }
 async function loadMovements() { movements.value = await api.get('/movements') }
+function newOrderLine() {
+  return { key: `${Date.now()}-${Math.random()}`, productId: null, warehouseId: null, locationId: null, quantity: 1 }
+}
+function resetOrderForm(targetView = view.value) {
+  orderForm.type = targetView === 'inbound-create' ? 'PURCHASE' : 'SALE'
+  orderForm.operatorName = user.value?.displayName || user.value?.username || ''
+  orderForm.remark = ''
+  orderForm.items.splice(0, orderForm.items.length, newOrderLine())
+}
+function addOrderLine() { orderForm.items.push(newOrderLine()) }
+function removeOrderLine(index) { if (orderForm.items.length > 1) orderForm.items.splice(index, 1) }
+function locationsForWarehouse(warehouseId) {
+  return locations.value.filter(l => l.warehouseId === warehouseId && l.status !== 'DISABLED')
+}
+async function createOrder() {
+  const invalid = orderForm.items.some(line => !line.productId || !line.warehouseId || !line.locationId || !line.quantity || line.quantity < 1)
+  if (invalid) return showToast('\u8bf7\u5b8c\u6574\u586b\u5199\u6240\u6709\u8ba2\u5355\u660e\u7ec6', 'error')
+  loading.order = true
+  try {
+    const path = isInboundCreate.value ? '/inbound' : '/outbound'
+    const order = await api.post(path, {
+      type: orderForm.type,
+      operatorName: orderForm.operatorName,
+      remark: orderForm.remark,
+      items: orderForm.items.map(({ productId, warehouseId, locationId, quantity }) => ({ productId, warehouseId, locationId, quantity: Number(quantity) }))
+    })
+    showToast(`\u8ba2\u5355 ${order.orderNo} \u521b\u5efa\u6210\u529f`)
+    view.value = isInboundCreate.value ? 'inbound-orders' : 'outbound-orders'
+    await (view.value === 'inbound-orders' ? loadInboundOrders() : loadOutboundOrders())
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.order = false
+  }
+}
 async function previewShelf() {
   loading.shelf = true
   try {
@@ -493,7 +626,7 @@ function locationStatus(l) {
   return (l.occupied || 0) > 0 ? '\u4f7f\u7528\u4e2d' : '\u7a7a\u95f2'
 }
 function orderStatus(status) {
-  return { CREATED: '\u6536\u8d27\u4e2d', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
+  return { CREATED: '\u5f85\u5904\u7406', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
 }
 function receiveStatusName(status) {
   return { NOT_RECEIVED: '\u672a\u6536\u8d27', PARTIAL: '\u90e8\u5206\u6536\u8d27', DONE: '\u5df2\u5b8c\u6210', OVER: '\u8d85\u51fa' }[status] || status
@@ -505,7 +638,11 @@ function movementName(type) {
   return { INBOUND: '\u5165\u5e93', OUTBOUND: '\u51fa\u5e93', CHECK_GAIN: '\u76d8\u76c8', CHECK_LOSS: '\u76d8\u4e8f' }[type] || type
 }
 function typeName(type) {
-  return { PURCHASE: '\u91c7\u8d2d\u5165\u5e93', RETURN: '\u9000\u8d27', TRANSFER: '\u8c03\u62e8', INVENTORY_GAIN: '\u76d8\u76c8' }[type] || type
+  return {
+    PURCHASE: '\u91c7\u8d2d\u5165\u5e93', RETURN: '\u9000\u8d27\u5165\u5e93', TRANSFER: '\u8c03\u62e8',
+    INVENTORY_GAIN: '\u76d8\u76c8\u5165\u5e93', SALE: '\u9500\u552e\u51fa\u5e93', REQUISITION: '\u9886\u7528\u51fa\u5e93',
+    DAMAGE: '\u62a5\u635f\u51fa\u5e93', INVENTORY_LOSS: '\u76d8\u4e8f\u51fa\u5e93'
+  }[type] || type
 }
 
 onMounted(async () => {
