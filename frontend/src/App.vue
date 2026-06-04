@@ -17,17 +17,20 @@
           <strong>{{ text.workbench }}</strong>
           <span>{{ user.displayName || user.username }} / {{ roleName(user.role) }}</span>
         </div>
-        <button @click="logout">{{ text.logout }}</button>
+        <div class="top-actions">
+          <button v-if="view !== 'home'" @click="openHome">{{ text.backWorkbench }}</button>
+          <button @click="logout">{{ text.logout }}</button>
+        </div>
       </header>
 
-      <section class="overview">
+      <section v-if="view === 'home'" class="overview">
         <div v-for="card in overviewCards" :key="card.label" class="metric">
           <span>{{ card.label }}</span>
           <b>{{ card.value }}</b>
         </div>
       </section>
 
-      <section class="module-grid">
+      <section v-if="view === 'home'" class="module-grid">
         <button v-for="module in modules" :key="module.key" :class="{ active: activeModule === module.key }" @click="toggleModule(module.key)">
           <i>{{ module.icon }}</i>
           <span>{{ module.label }}</span>
@@ -120,7 +123,7 @@
         </section>
 
         <section v-if="view === 'shelf-create'" class="panel">
-          <div class="panel-head"><h2>{{ labels.shelfCreate }}</h2><button @click="view = 'home'">{{ text.back }}</button></div>
+          <div class="panel-head"><h2>{{ labels.shelfCreate }}</h2><button @click="openHome">{{ text.back }}</button></div>
           <div class="form-grid">
             <label>{{ labels.warehouse }}
               <select v-model.number="shelfForm.warehouseId">
@@ -255,7 +258,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { api } from './api'
 
 const zh = s => s
@@ -274,7 +277,8 @@ const text = {
   back: '\u8fd4\u56de',
   select: '\u8bf7\u9009\u62e9',
   submitting: '\u63d0\u4ea4\u4e2d...',
-  clear: '\u6e05\u7a7a'
+  clear: '\u6e05\u7a7a',
+  backWorkbench: '\u8fd4\u56de\u5de5\u4f5c\u53f0'
 }
 const labels = {
   inboundOrders: '\u5165\u5e93\u8ba2\u5355',
@@ -406,6 +410,7 @@ async function login() {
     user.value = await api.post('/users/login', loginForm)
     localStorage.setItem('wms-user', JSON.stringify(user.value))
     await bootstrap()
+    await loadView(view.value)
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
@@ -415,6 +420,7 @@ async function login() {
 function logout() {
   localStorage.removeItem('wms-user')
   user.value = null
+  openHome(true)
   nextTick(() => loginUserRef.value?.focus())
 }
 async function bootstrap() {
@@ -425,15 +431,45 @@ async function bootstrap() {
 function toggleModule(key) {
   activeModule.value = activeModule.value === key ? '' : key
 }
-async function openView(key) {
-  view.value = key
+function moduleForView(key) {
+  return modules.find(m => m.subs.some(sub => sub.key === key))
+}
+function routeForView(key) {
+  const owner = moduleForView(key)
+  return owner ? `/modules/${owner.key}/${key}` : '/'
+}
+function viewFromRoute() {
+  const parts = window.location.pathname.split('/').filter(Boolean)
+  if (parts[0] !== 'modules' || parts.length !== 3) return 'home'
+  const owner = modules.find(m => m.key === parts[1])
+  return owner?.subs.some(sub => sub.key === parts[2]) ? parts[2] : 'home'
+}
+async function loadView(key) {
+  if (!user.value) return
   if (key === 'inbound-orders') await loadInboundOrders()
   if (key === 'outbound-orders') await loadOutboundOrders()
-  if (key === 'inbound-create' || key === 'outbound-create') resetOrderForm(key)
   if (key === 'location-query') await loadLocations()
   if (key === 'stock-query') await loadStocks()
   if (key === 'stock-flow') await loadMovements()
   if (key === 'receiving') nextTick(() => focusField('orderNo'))
+}
+async function activateView(key, updateHistory = true) {
+  view.value = key
+  activeModule.value = moduleForView(key)?.key || ''
+  if (key === 'inbound-create' || key === 'outbound-create') resetOrderForm(key)
+  if (updateHistory) window.history.pushState({}, '', routeForView(key))
+  await loadView(key)
+}
+async function openView(key) {
+  await activateView(key)
+}
+function openHome(replace = false) {
+  view.value = 'home'
+  activeModule.value = ''
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', '/')
+}
+async function syncRoute() {
+  await activateView(viewFromRoute(), false)
 }
 async function loadInboundOrders() { inboundOrders.value = await api.get('/inbound') }
 async function loadOutboundOrders() { outboundOrders.value = await api.get('/outbound') }
@@ -469,8 +505,7 @@ async function createOrder() {
       items: orderForm.items.map(({ productId, warehouseId, locationId, quantity }) => ({ productId, warehouseId, locationId, quantity: Number(quantity) }))
     })
     showToast(`\u8ba2\u5355 ${order.orderNo} \u521b\u5efa\u6210\u529f`)
-    view.value = isInboundCreate.value ? 'inbound-orders' : 'outbound-orders'
-    await (view.value === 'inbound-orders' ? loadInboundOrders() : loadOutboundOrders())
+    await openView(isInboundCreate.value ? 'inbound-orders' : 'outbound-orders')
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
@@ -495,8 +530,7 @@ async function generateShelf() {
     const data = await api.post('/shelves/generate', shelfForm)
     shelfPreview.value = data.codes
     showToast('\u8d27\u67b6\u548c\u8d27\u4f4d\u751f\u6210\u6210\u529f')
-    view.value = 'location-query'
-    await loadLocations()
+    await openView('location-query')
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
@@ -646,7 +680,12 @@ function typeName(type) {
 }
 
 onMounted(async () => {
-  if (user.value) await bootstrap()
-  else nextTick(() => loginUserRef.value?.focus())
+  await syncRoute()
+  window.addEventListener('popstate', syncRoute)
+  if (user.value) {
+    await bootstrap()
+    await loadView(view.value)
+  } else nextTick(() => loginUserRef.value?.focus())
 })
+onUnmounted(() => window.removeEventListener('popstate', syncRoute))
 </script>
