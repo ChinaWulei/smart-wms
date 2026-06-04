@@ -3,7 +3,7 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8080/api}
+        VITE_API_BASE: ${VITE_API_BASE:-http://backend:8080/api}
         NGINX_CONF: nginx.standalone.conf
     restart: unless-stopped
     ports:
