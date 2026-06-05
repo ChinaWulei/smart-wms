@@ -26,6 +26,7 @@ import com.example.wms.dto.OrderDtos.OutboundRequest;
 import com.example.wms.dto.ViewDtos.StockView;
 import com.example.wms.dto.WmsDtos.InboundItemView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
+import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
 import com.example.wms.dto.WmsDtos.ScanProductView;
@@ -74,7 +75,7 @@ public class InventoryService {
     }
 
     @Transactional
-    public InboundOrder inbound(InboundRequest request) {
+    public OrderSummaryView inbound(InboundRequest request) {
         InboundOrder order = new InboundOrder();
         order.setOrderNo("IN" + DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS").format(LocalDateTime.now()));
         order.setType(request.type());
@@ -95,11 +96,11 @@ public class InventoryService {
             order.getItems().add(item);
         }
         order.setStatus(OrderStatus.CREATED);
-        return inboundOrderRepository.save(order);
+        return inboundSummary(inboundOrderRepository.save(order));
     }
 
     @Transactional
-    public OutboundOrder outbound(OutboundRequest request) {
+    public OrderSummaryView outbound(OutboundRequest request) {
         OutboundOrder order = new OutboundOrder();
         order.setOrderNo("OUT" + DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS").format(LocalDateTime.now()));
         order.setType(request.type());
@@ -119,7 +120,17 @@ public class InventoryService {
             order.getItems().add(item);
         }
         order.setStatus(OrderStatus.CREATED);
-        return outboundOrderRepository.save(order);
+        return outboundSummary(outboundOrderRepository.save(order));
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderSummaryView> inboundOrders() {
+        return inboundOrderRepository.findAll().stream().map(this::inboundSummary).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderSummaryView> outboundOrders() {
+        return outboundOrderRepository.findAll().stream().map(this::outboundSummary).toList();
     }
 
     @Transactional
@@ -326,6 +337,16 @@ public class InventoryService {
         int progress = expectedTotal == 0 ? 0 : Math.min(100, receivedTotal * 100 / expectedTotal);
         return new InboundOrderView(order.getOrderNo(), order.getOperatorName(), order.getType().name(),
                 order.getStatus(), expectedTotal, receivedTotal, progress, items);
+    }
+
+    private OrderSummaryView inboundSummary(InboundOrder order) {
+        return new OrderSummaryView(order.getId(), order.getOrderNo(), order.getType().name(), order.getStatus(),
+                order.getOperatorName(), order.getRemark(), order.getItems().size());
+    }
+
+    private OrderSummaryView outboundSummary(OutboundOrder order) {
+        return new OrderSummaryView(order.getId(), order.getOrderNo(), order.getType().name(), order.getStatus(),
+                order.getOperatorName(), order.getRemark(), order.getItems().size());
     }
 
     private String receiveStatus(int expected, int received) {

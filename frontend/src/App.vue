@@ -56,7 +56,7 @@
             <article v-for="o in inboundOrders" :key="o.id" class="location-card">
               <b>{{ o.orderNo }}</b>
               <span>{{ typeName(o.type) }} / {{ orderStatus(o.status) }}</span>
-              <em>{{ o.operatorName || '-' }} / {{ o.items?.length || 0 }} SKU</em>
+              <em>{{ o.operatorName || '-' }} / {{ o.itemCount || 0 }} SKU</em>
             </article>
           </div>
         </section>
@@ -70,7 +70,7 @@
             <article v-for="o in outboundOrders" :key="o.id" class="location-card">
               <b>{{ o.orderNo }}</b>
               <span>{{ typeName(o.type) }} / {{ orderStatus(o.status) }}</span>
-              <em>{{ o.operatorName || '-' }} / {{ o.items?.length || 0 }} SKU</em>
+              <em>{{ o.operatorName || '-' }} / {{ o.itemCount || 0 }} SKU</em>
             </article>
           </div>
         </section>

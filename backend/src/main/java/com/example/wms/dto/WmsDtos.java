@@ -19,6 +19,8 @@ public class WmsDtos {
     public record InboundOrderView(String orderNo, String supplier, String type, OrderStatus status,
                                    Integer expectedTotal, Integer receivedTotal, Integer progress,
                                    List<InboundItemView> items) {}
+    public record OrderSummaryView(Long id, String orderNo, String type, OrderStatus status, String operatorName,
+                                   String remark, Integer itemCount) {}
     public record ScanLocationView(String code, String warehouseName, String shelfCode, LocationStatus status,
                                    Integer capacity, Integer occupied) {}
     public record ScanProductView(String sku, String barcode, String productName, String modelSpec, String unitName,

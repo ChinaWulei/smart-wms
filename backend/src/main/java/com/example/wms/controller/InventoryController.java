@@ -1,11 +1,10 @@
 package com.example.wms.controller;
 
 import com.example.wms.common.ApiResponse;
-import com.example.wms.domain.InboundOrder;
 import com.example.wms.domain.InventoryCheck;
-import com.example.wms.domain.OutboundOrder;
 import com.example.wms.domain.StockMovement;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
+import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
 import com.example.wms.dto.WmsDtos.ScanProductView;
@@ -13,9 +12,7 @@ import com.example.wms.dto.OrderDtos.CheckRequest;
 import com.example.wms.dto.OrderDtos.InboundRequest;
 import com.example.wms.dto.OrderDtos.OutboundRequest;
 import com.example.wms.dto.ViewDtos.StockView;
-import com.example.wms.repository.InboundOrderRepository;
 import com.example.wms.repository.InventoryCheckRepository;
-import com.example.wms.repository.OutboundOrderRepository;
 import com.example.wms.repository.StockMovementRepository;
 import com.example.wms.service.InventoryService;
 import jakarta.validation.Valid;
@@ -31,26 +28,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class InventoryController {
     private final InventoryService inventoryService;
-    private final InboundOrderRepository inboundOrderRepository;
-    private final OutboundOrderRepository outboundOrderRepository;
     private final InventoryCheckRepository checkRepository;
     private final StockMovementRepository movementRepository;
 
-    public InventoryController(InventoryService inventoryService, InboundOrderRepository inboundOrderRepository,
-                               OutboundOrderRepository outboundOrderRepository, InventoryCheckRepository checkRepository,
+    public InventoryController(InventoryService inventoryService, InventoryCheckRepository checkRepository,
                                StockMovementRepository movementRepository) {
         this.inventoryService = inventoryService;
-        this.inboundOrderRepository = inboundOrderRepository;
-        this.outboundOrderRepository = outboundOrderRepository;
         this.checkRepository = checkRepository;
         this.movementRepository = movementRepository;
     }
 
     @PostMapping("/inbound")
-    public ApiResponse<InboundOrder> inbound(@Valid @RequestBody InboundRequest request) { return ApiResponse.ok(inventoryService.inbound(request)); }
+    public ApiResponse<OrderSummaryView> inbound(@Valid @RequestBody InboundRequest request) { return ApiResponse.ok(inventoryService.inbound(request)); }
 
     @GetMapping("/inbound")
-    public ApiResponse<List<InboundOrder>> inboundOrders() { return ApiResponse.ok(inboundOrderRepository.findAll()); }
+    public ApiResponse<List<OrderSummaryView>> inboundOrders() { return ApiResponse.ok(inventoryService.inboundOrders()); }
 
     @GetMapping("/inbound/{orderNo}")
     public ApiResponse<InboundOrderView> inboundOrder(@org.springframework.web.bind.annotation.PathVariable String orderNo) {
@@ -73,10 +65,10 @@ public class InventoryController {
     }
 
     @PostMapping("/outbound")
-    public ApiResponse<OutboundOrder> outbound(@Valid @RequestBody OutboundRequest request) { return ApiResponse.ok(inventoryService.outbound(request)); }
+    public ApiResponse<OrderSummaryView> outbound(@Valid @RequestBody OutboundRequest request) { return ApiResponse.ok(inventoryService.outbound(request)); }
 
     @GetMapping("/outbound")
-    public ApiResponse<List<OutboundOrder>> outboundOrders() { return ApiResponse.ok(outboundOrderRepository.findAll()); }
+    public ApiResponse<List<OrderSummaryView>> outboundOrders() { return ApiResponse.ok(inventoryService.outboundOrders()); }
 
     @PostMapping("/inventory-checks")
     public ApiResponse<InventoryCheck> check(@Valid @RequestBody CheckRequest request) { return ApiResponse.ok(inventoryService.confirmCheck(request)); }
