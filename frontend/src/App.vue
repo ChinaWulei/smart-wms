@@ -183,7 +183,7 @@
           </div>
           <section v-if="!inboundOrder" class="scan-box">
             <label :class="{ error: errorField === 'orderNo' }">{{ labels.inboundNo }}
-              <input ref="orderNoRef" v-model.trim="receiveForm.orderNo" placeholder="IN202606010001" @focus="selectField('orderNo')" @keyup.enter="handleEnter('orderNo')" @change="loadInboundOrder">
+              <input ref="orderNoRef" v-model.trim="receiveForm.orderNo" placeholder="IN202606010001" @focus="selectField('orderNo')" @input="scheduleScan('orderNo')" @keyup.enter="handleEnter('orderNo')">
             </label>
           </section>
 
@@ -204,10 +204,10 @@
 
           <section v-if="inboundOrder" class="scan-box">
             <label :class="{ error: errorField === 'locationCode' }">{{ labels.locationCode }}
-              <input ref="locationCodeRef" v-model.trim="receiveForm.locationCode" placeholder="LT-A01-1-1-1" @focus="selectField('locationCode')" @keyup.enter="handleEnter('locationCode')">
+              <input ref="locationCodeRef" v-model.trim="receiveForm.locationCode" placeholder="LT-A01-1-1-1" @focus="selectField('locationCode')" @input="scheduleScan('locationCode')" @keyup.enter="handleEnter('locationCode')">
             </label>
             <label :class="{ error: errorField === 'productCode' }">{{ labels.productCode }}
-              <input ref="productCodeRef" v-model.trim="receiveForm.productCode" placeholder="P001 / 697000000001" @focus="selectField('productCode')" @keyup.enter="handleEnter('productCode')">
+              <input ref="productCodeRef" v-model.trim="receiveForm.productCode" placeholder="P001 / 697000000001" @focus="selectField('productCode')" @input="scheduleScan('productCode')" @keyup.enter="handleEnter('productCode')">
             </label>
             <div class="mode-row">
               <button :class="{ active: qtyMode === 'fixed' }" @click="setQtyMode('fixed')">{{ labels.fixedQty }}</button>
@@ -375,6 +375,7 @@ const shelfPreview = ref([])
 const qtyMode = ref('fixed')
 const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
+const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
 const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
@@ -578,6 +579,7 @@ async function loadLocations() {
   locations.value = await api.get(`/locations?${q.toString()}`)
 }
 async function handleEnter(field) {
+  clearScanTimer(field)
   if (loading.receive) return
   const value = receiveForm[field]
   if (handleScanInput(value)) return
@@ -585,6 +587,18 @@ async function handleEnter(field) {
   if (field === 'locationCode') return scanLocation()
   if (field === 'productCode') return scanProduct()
   if (field === 'quantity') return focusField('confirm')
+}
+function scheduleScan(field) {
+  clearScanTimer(field)
+  if (!receiveForm[field]) return
+  scanTimers[field] = window.setTimeout(() => handleEnter(field), scanDelay(field))
+}
+function clearScanTimer(field) {
+  window.clearTimeout(scanTimers[field])
+  scanTimers[field] = null
+}
+function scanDelay(field) {
+  return field === 'orderNo' ? 450 : 320
 }
 function handleScanInput(value) {
   const now = Date.now()
@@ -626,6 +640,7 @@ async function loadReceiveOrder(orderNo) {
   }
 }
 async function scanLocation() {
+  if (loading.receive || !receiveForm.locationCode || scanResult.location?.code === receiveForm.locationCode) return
   await runScan('locationCode', async () => {
     scanResult.location = await api.get(`/scan/location/${encodeURIComponent(receiveForm.locationCode)}`)
     showToast('\u8d27\u4f4d\u8bc6\u522b\u6210\u529f')
@@ -633,6 +648,7 @@ async function scanLocation() {
   })
 }
 async function scanProduct() {
+  if (loading.receive || !receiveForm.productCode || scanResult.product?.sku === receiveForm.productCode || scanResult.product?.barcode === receiveForm.productCode) return
   await runScan('productCode', async () => {
     scanResult.product = await api.get(`/scan/inbound-product?orderNo=${encodeURIComponent(receiveForm.orderNo)}&code=${encodeURIComponent(receiveForm.productCode)}`)
     receiveForm.quantity = qtyMode.value === 'fixed' ? 1 : null
