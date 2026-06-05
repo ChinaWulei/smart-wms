@@ -174,7 +174,22 @@
         </section>
 
         <section v-if="view === 'receiving'" class="panel work-panel">
-          <div class="panel-head"><h2>{{ labels.receiving }}</h2><button @click="resetReceive">{{ text.clear }}</button></div>
+          <div class="panel-head">
+            <h2>{{ inboundOrder ? labels.receiveOrder : labels.receiving }}</h2>
+            <div class="head-actions">
+              <button v-if="inboundOrder" @click="openReceivingEntry">{{ labels.changeOrder }}</button>
+              <button @click="resetReceive">{{ text.clear }}</button>
+            </div>
+          </div>
+          <section v-if="!inboundOrder" class="scan-box">
+            <label :class="{ error: errorField === 'orderNo' }">{{ labels.inboundNo }}
+              <input ref="orderNoRef" v-model.trim="receiveForm.orderNo" placeholder="IN202606010001" @focus="selectField('orderNo')" @keyup.enter="handleEnter('orderNo')">
+            </label>
+            <button class="primary wide" :disabled="loading.receive" @click="loadInboundOrder">
+              {{ loading.receive ? text.submitting : labels.enterReceiveOrder }}
+            </button>
+          </section>
+
           <section v-if="inboundOrder" class="order-info">
             <div><span>{{ labels.inboundNo }}</span><b>{{ inboundOrder.orderNo }}</b></div>
             <div><span>{{ labels.supplier }}</span><b>{{ inboundOrder.supplier }}</b></div>
@@ -182,10 +197,15 @@
             <div><span>{{ labels.progress }}</span><b>{{ inboundOrder.receivedTotal }}/{{ inboundOrder.expectedTotal }} / {{ inboundOrder.progress }}%</b></div>
           </section>
 
-          <section class="scan-box">
-            <label :class="{ error: errorField === 'orderNo' }">{{ labels.inboundNo }}
-              <input ref="orderNoRef" v-model.trim="receiveForm.orderNo" placeholder="IN202606010001" @focus="selectField('orderNo')" @keyup.enter="handleEnter('orderNo')">
-            </label>
+          <section v-if="inboundOrder" class="item-list receive-items">
+            <article v-for="item in inboundOrder.items" :key="item.itemId" :class="['receive-card', item.receiveStatus.toLowerCase()]">
+              <div><b>{{ item.sku }} {{ item.productName }}</b><span>{{ receiveStatusName(item.receiveStatus) }}</span></div>
+              <p>{{ item.modelSpec }} / {{ item.unitName }}</p>
+              <footer>{{ labels.expectedQty }} {{ item.expectedQuantity }} / {{ labels.receivedQty }} {{ item.receivedQuantity }} / {{ labels.remainingQty }} {{ item.remainingQuantity }}</footer>
+            </article>
+          </section>
+
+          <section v-if="inboundOrder" class="scan-box">
             <label :class="{ error: errorField === 'locationCode' }">{{ labels.locationCode }}
               <input ref="locationCodeRef" v-model.trim="receiveForm.locationCode" placeholder="LT-A01-1-1-1" @focus="selectField('locationCode')" @keyup.enter="handleEnter('locationCode')">
             </label>
@@ -220,13 +240,6 @@
             <div><span>{{ labels.thisQty }}</span><b>{{ receiveForm.quantity || 0 }}</b></div>
           </section>
 
-          <section v-if="inboundOrder" class="item-list">
-            <article v-for="item in inboundOrder.items" :key="item.itemId" :class="['receive-card', item.receiveStatus.toLowerCase()]">
-              <div><b>{{ item.sku }} {{ item.productName }}</b><span>{{ receiveStatusName(item.receiveStatus) }}</span></div>
-              <p>{{ item.modelSpec }} / {{ item.unitName }}</p>
-              <footer>{{ labels.expectedQty }} {{ item.expectedQuantity }} / {{ labels.receivedQty }} {{ item.receivedQuantity }} / {{ labels.remainingQty }} {{ item.remainingQuantity }}</footer>
-            </article>
-          </section>
         </section>
 
         <section v-if="view === 'stock-query'" class="panel">
@@ -308,6 +321,9 @@ const labels = {
   full: '\u5df2\u6ee1',
   disabled: '\u7981\u7528',
   receiving: '\u6536\u8d27\u7ba1\u7406',
+  receiveOrder: '\u8ba2\u5355\u6536\u8d27',
+  enterReceiveOrder: '\u8fdb\u5165\u6536\u8d27',
+  changeOrder: '\u66f4\u6362\u8ba2\u5355',
   inboundNo: '\u5165\u5e93\u5355\u53f7',
   supplier: '\u4f9b\u5e94\u5546',
   status: '\u72b6\u6001',
@@ -358,6 +374,7 @@ const inboundOrders = ref([])
 const outboundOrders = ref([])
 const dashboard = ref({})
 const inboundOrder = ref(null)
+const activeReceiveOrderNo = ref('')
 const shelfPreview = ref([])
 const qtyMode = ref('fixed')
 const errorField = ref('')
@@ -434,15 +451,18 @@ function toggleModule(key) {
 function moduleForView(key) {
   return modules.find(m => m.subs.some(sub => sub.key === key))
 }
-function routeForView(key) {
+function routeForView(key, orderNo = '') {
   const owner = moduleForView(key)
-  return owner ? `/modules/${owner.key}/${key}` : '/'
+  if (!owner) return '/'
+  const suffix = key === 'receiving' && orderNo ? `/${encodeURIComponent(orderNo)}` : ''
+  return `/modules/${owner.key}/${key}${suffix}`
 }
 function viewFromRoute() {
   const parts = window.location.pathname.split('/').filter(Boolean)
-  if (parts[0] !== 'modules' || parts.length !== 3) return 'home'
+  if (parts[0] !== 'modules' || parts.length < 3) return { key: 'home', orderNo: '' }
   const owner = modules.find(m => m.key === parts[1])
-  return owner?.subs.some(sub => sub.key === parts[2]) ? parts[2] : 'home'
+  const key = owner?.subs.some(sub => sub.key === parts[2]) ? parts[2] : 'home'
+  return { key, orderNo: key === 'receiving' && parts[3] ? decodeURIComponent(parts[3]) : '' }
 }
 async function loadView(key) {
   if (!user.value) return
@@ -451,25 +471,42 @@ async function loadView(key) {
   if (key === 'location-query') await loadLocations()
   if (key === 'stock-query') await loadStocks()
   if (key === 'stock-flow') await loadMovements()
-  if (key === 'receiving') nextTick(() => focusField('orderNo'))
+  if (key === 'receiving') {
+    if (activeReceiveOrderNo.value) await loadReceiveOrder(activeReceiveOrderNo.value)
+    else nextTick(() => focusField('orderNo'))
+  }
 }
-async function activateView(key, updateHistory = true) {
+async function activateView(key, updateHistory = true, orderNo = '') {
   view.value = key
   activeModule.value = moduleForView(key)?.key || ''
   if (key === 'inbound-create' || key === 'outbound-create') resetOrderForm(key)
-  if (updateHistory) window.history.pushState({}, '', routeForView(key))
+  if (key === 'receiving') {
+    activeReceiveOrderNo.value = orderNo
+    if (!orderNo) clearReceiveState()
+  }
+  else activeReceiveOrderNo.value = ''
+  if (updateHistory) window.history.pushState({}, '', routeForView(key, orderNo))
   await loadView(key)
 }
 async function openView(key) {
   await activateView(key)
 }
+async function openReceivingEntry() {
+  resetReceive()
+  await activateView('receiving')
+}
+async function openReceiveOrder(orderNo) {
+  await activateView('receiving', true, orderNo)
+}
 function openHome(replace = false) {
   view.value = 'home'
   activeModule.value = ''
+  activeReceiveOrderNo.value = ''
   window.history[replace ? 'replaceState' : 'pushState']({}, '', '/')
 }
 async function syncRoute() {
-  await activateView(viewFromRoute(), false)
+  const route = viewFromRoute()
+  await activateView(route.key, false, route.orderNo)
 }
 async function loadInboundOrders() { inboundOrders.value = await api.get('/inbound') }
 async function loadOutboundOrders() { outboundOrders.value = await api.get('/outbound') }
@@ -565,10 +602,19 @@ function handleScanInput(value) {
 }
 async function loadInboundOrder() {
   await runScan('orderNo', async () => {
-    inboundOrder.value = await api.get(`/inbound/${receiveForm.orderNo}`)
+    const order = await api.get(`/inbound/${receiveForm.orderNo}`)
+    inboundOrder.value = order
+    activeReceiveOrderNo.value = order.orderNo
+    window.history.pushState({}, '', routeForView('receiving', order.orderNo))
     showToast('\u5165\u5e93\u5355\u8bc6\u522b\u6210\u529f')
-    focusNext('orderNo')
+    focusField('locationCode')
   })
+}
+async function loadReceiveOrder(orderNo) {
+  receiveForm.orderNo = orderNo
+  inboundOrder.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`)
+  activeReceiveOrderNo.value = inboundOrder.value.orderNo
+  nextTick(() => focusField('locationCode'))
 }
 async function scanLocation() {
   await runScan('locationCode', async () => {
@@ -631,11 +677,16 @@ function setQtyMode(mode) {
   receiveForm.quantity = mode === 'fixed' ? 1 : null
 }
 function resetReceive() {
+  clearReceiveState()
+  if (view.value === 'receiving') window.history.replaceState({}, '', routeForView('receiving'))
+  focusField('orderNo')
+}
+function clearReceiveState() {
   Object.assign(receiveForm, { orderNo: '', locationCode: '', productCode: '', quantity: 1 })
   Object.assign(scanResult, { location: null, product: null })
   inboundOrder.value = null
+  activeReceiveOrderNo.value = ''
   qtyMode.value = 'fixed'
-  focusField('orderNo')
 }
 function focusField(field) { nextTick(() => refs[field]?.value?.focus()) }
 function focusNext(field) {

@@ -64,6 +64,7 @@ label.disabled { opacity: .78; }
 .scan-result { margin-top: 14px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .scan-result h3 { grid-column: 1 / -1; font-size: 16px; }
 .item-list { display: grid; gap: 10px; margin-top: 14px; }
+.receive-items { margin-bottom: 14px; }
 .receive-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #fff; display: grid; gap: 8px; }
 .receive-card div { display: flex; justify-content: space-between; gap: 10px; }
 .receive-card span { border-radius: 999px; padding: 3px 8px; font-size: 12px; background: #eef2f6; white-space: nowrap; }
