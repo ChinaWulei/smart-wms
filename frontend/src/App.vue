@@ -183,11 +183,8 @@
           </div>
           <section v-if="!inboundOrder" class="scan-box">
             <label :class="{ error: errorField === 'orderNo' }">{{ labels.inboundNo }}
-              <input ref="orderNoRef" v-model.trim="receiveForm.orderNo" placeholder="IN202606010001" @focus="selectField('orderNo')" @keyup.enter="handleEnter('orderNo')">
+              <input ref="orderNoRef" v-model.trim="receiveForm.orderNo" placeholder="IN202606010001" @focus="selectField('orderNo')" @keyup.enter="handleEnter('orderNo')" @change="loadInboundOrder">
             </label>
-            <button class="primary wide" :disabled="loading.receive" @click="loadInboundOrder">
-              {{ loading.receive ? text.submitting : labels.enterReceiveOrder }}
-            </button>
           </section>
 
           <section v-if="inboundOrder" class="order-info">
@@ -322,7 +319,6 @@ const labels = {
   disabled: '\u7981\u7528',
   receiving: '\u6536\u8d27\u7ba1\u7406',
   receiveOrder: '\u8ba2\u5355\u6536\u8d27',
-  enterReceiveOrder: '\u8fdb\u5165\u6536\u8d27',
   changeOrder: '\u66f4\u6362\u8ba2\u5355',
   inboundNo: '\u5165\u5e93\u5355\u53f7',
   supplier: '\u4f9b\u5e94\u5546',
@@ -601,8 +597,14 @@ function handleScanInput(value) {
   return false
 }
 async function loadInboundOrder() {
+  if (loading.receive) return
+  if (!receiveForm.orderNo) {
+    errorField.value = 'orderNo'
+    return showToast('\u8bf7\u5148\u8f93\u5165\u5165\u5e93\u5355\u53f7', 'error')
+  }
+  if (inboundOrder.value?.orderNo === receiveForm.orderNo) return
   await runScan('orderNo', async () => {
-    const order = await api.get(`/inbound/${receiveForm.orderNo}`)
+    const order = await api.get(`/inbound/${encodeURIComponent(receiveForm.orderNo)}`)
     inboundOrder.value = order
     activeReceiveOrderNo.value = order.orderNo
     window.history.pushState({}, '', routeForView('receiving', order.orderNo))
@@ -611,10 +613,17 @@ async function loadInboundOrder() {
   })
 }
 async function loadReceiveOrder(orderNo) {
-  receiveForm.orderNo = orderNo
-  inboundOrder.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`)
-  activeReceiveOrderNo.value = inboundOrder.value.orderNo
-  nextTick(() => focusField('locationCode'))
+  try {
+    receiveForm.orderNo = orderNo
+    inboundOrder.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`)
+    activeReceiveOrderNo.value = inboundOrder.value.orderNo
+    nextTick(() => focusField('locationCode'))
+  } catch (e) {
+    showToast(e.message, 'error')
+    clearReceiveState()
+    window.history.replaceState({}, '', routeForView('receiving'))
+    nextTick(() => focusField('orderNo'))
+  }
 }
 async function scanLocation() {
   await runScan('locationCode', async () => {

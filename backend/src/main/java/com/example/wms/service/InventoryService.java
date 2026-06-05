@@ -176,8 +176,11 @@ public class InventoryService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public InboundOrderView getInboundOrder(String orderNo) {
-        return inboundView(inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在")));
+        InboundOrder order = inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在"));
+        validateReceivable(order);
+        return inboundView(order);
     }
 
     public ScanLocationView scanLocation(String locationCode) {
@@ -188,8 +191,10 @@ public class InventoryService {
                 location.getStatus(), location.getCapacity(), location.getOccupied());
     }
 
+    @Transactional(readOnly = true)
     public ScanProductView scanInboundProduct(String orderNo, String productCode) {
         InboundOrder order = inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在"));
+        validateReceivable(order);
         Product product = findProductByCode(productCode);
         InboundOrderItem item = findInboundItem(order, product);
         int expected = n(item.getQuantity());
@@ -322,6 +327,12 @@ public class InventoryService {
                 .filter(i -> Objects.equals(i.getProduct().getId(), product.getId()))
                 .findFirst()
                 .orElseThrow(() -> new BizException("商品不在当前入库单中"));
+    }
+
+    private void validateReceivable(InboundOrder order) {
+        if (order.getStatus() != OrderStatus.CREATED) {
+            throw new BizException("入库单不是待收货状态");
+        }
     }
 
     private InboundOrderView inboundView(InboundOrder order) {
