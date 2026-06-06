@@ -14,6 +14,7 @@ import com.example.wms.dto.WmsDtos.ScanProductView;
 import com.example.wms.dto.OrderDtos.CheckRequest;
 import com.example.wms.dto.OrderDtos.InboundRequest;
 import com.example.wms.dto.OrderDtos.OutboundRequest;
+import com.example.wms.dto.OrderDtos.PickingRequest;
 import com.example.wms.dto.ViewDtos.StockView;
 import com.example.wms.repository.InventoryCheckRepository;
 import com.example.wms.repository.StockMovementRepository;
@@ -68,6 +69,18 @@ public class InventoryController {
         return ApiResponse.ok(inventoryService.receiveInbound(request));
     }
 
+    @PostMapping("/inbound/{orderNo}/confirm")
+    public ApiResponse<InboundOrderDetailView> confirmInbound(
+            @PathVariable String orderNo, @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.confirmInbound(orderNo, operatorName));
+    }
+
+    @PostMapping("/inbound/{orderNo}/cancel")
+    public ApiResponse<InboundOrderDetailView> cancelInbound(
+            @PathVariable String orderNo, @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.cancelInbound(orderNo, operatorName));
+    }
+
     @GetMapping("/scan/location/{code}")
     public ApiResponse<ScanLocationView> scanLocation(@org.springframework.web.bind.annotation.PathVariable String code) {
         return ApiResponse.ok(inventoryService.scanLocation(code));
@@ -105,6 +118,30 @@ public class InventoryController {
     public ApiResponse<OutboundOrderDetailView> confirmOutboundOrder(
             @PathVariable Long id, @RequestParam(required = false) String operatorName) {
         return ApiResponse.ok(inventoryService.confirmOutbound(id, operatorName));
+    }
+
+    @PostMapping("/outbound-orders/{id}/picking/start")
+    public ApiResponse<OutboundOrderDetailView> startOutboundPicking(
+            @PathVariable Long id, @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.startPicking(id, operatorName));
+    }
+
+    @PostMapping("/outbound-orders/{id}/generate-pick-list")
+    public ApiResponse<OutboundOrderDetailView> generatePickList(
+            @PathVariable Long id, @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.generatePickList(id, operatorName));
+    }
+
+    @PostMapping("/outbound-orders/{id}/assign-picking")
+    public ApiResponse<OutboundOrderDetailView> assignPicking(
+            @PathVariable Long id, @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.assignPicking(id, operatorName));
+    }
+
+    @PostMapping("/outbound-orders/{id}/picking/complete")
+    public ApiResponse<OutboundOrderDetailView> completeOutboundPicking(
+            @PathVariable Long id, @Valid @RequestBody PickingRequest request) {
+        return ApiResponse.ok(inventoryService.completePicking(id, request));
     }
 
     @PostMapping("/outbound-orders/{id}/cancel")

@@ -137,7 +137,7 @@ public class DemoDataInitializer implements CommandLineRunner {
             InboundOrder order = new InboundOrder();
             order.setOrderNo("IN202606010001");
             order.setType(InboundType.PURCHASE);
-            order.setStatus(OrderStatus.CREATED);
+            order.setStatus(OrderStatus.IN_QUEUE);
             order.setOperatorName("默认供应商");
             inboundItem(order, p1, warehouse, location, 10);
             inboundItem(order, p4, warehouse, location, 10);
@@ -162,7 +162,7 @@ public class DemoDataInitializer implements CommandLineRunner {
             OutboundOrder order = new OutboundOrder();
             order.setOrderNo("OUT202606010001");
             order.setType(OutboundType.SALE);
-            order.setStatus(OrderStatus.CREATED);
+            order.setStatus(OrderStatus.IN_QUEUE);
             order.setOperatorName("演示客户");
             outboundItem(order, p1, warehouse, location, 5);
             outboundItem(order, p3, warehouse, location, 5);

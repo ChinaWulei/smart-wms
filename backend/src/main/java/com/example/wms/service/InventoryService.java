@@ -23,6 +23,8 @@ import com.example.wms.dto.OrderDtos.CheckRequest;
 import com.example.wms.dto.OrderDtos.InboundRequest;
 import com.example.wms.dto.OrderDtos.LineItem;
 import com.example.wms.dto.OrderDtos.OutboundRequest;
+import com.example.wms.dto.OrderDtos.PickingLine;
+import com.example.wms.dto.OrderDtos.PickingRequest;
 import com.example.wms.dto.ViewDtos.StockView;
 import com.example.wms.dto.WmsDtos.InboundItemView;
 import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
@@ -107,7 +109,7 @@ public class InventoryService {
             item.setTrackingNo(trackingNo(order.getOrderNo(), itemIndex++));
             order.getItems().add(item);
         }
-        order.setStatus(OrderStatus.CREATED);
+        order.setStatus(OrderStatus.IN_QUEUE);
         return inboundSummary(inboundOrderRepository.save(order));
     }
 
@@ -134,9 +136,11 @@ public class InventoryService {
             item.setWarehouse(warehouse);
             item.setLocation(location);
             item.setQuantity(line.quantity());
+            item.setAllocatedQuantity(0);
+            item.setPickedQuantity(0);
             order.getItems().add(item);
         }
-        order.setStatus(OrderStatus.CREATED);
+        order.setStatus(OrderStatus.IN_QUEUE);
         return outboundSummary(outboundOrderRepository.save(order));
     }
 
@@ -163,13 +167,113 @@ public class InventoryService {
     }
 
     @Transactional
+    public OutboundOrderDetailView generatePickList(Long id, String operatorName) {
+        OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("Outbound order does not exist"));
+        if (!isInQueue(order.getStatus())) {
+            throw new BizException("Only In Queue outbound orders can generate a pick list");
+        }
+        Map<OutboundStockKey, Integer> requiredByStock = requiredStock(order);
+        Map<OutboundStockKey, Stock> lockedStocks = new LinkedHashMap<>();
+        for (Map.Entry<OutboundStockKey, Integer> entry : requiredByStock.entrySet()) {
+            OutboundStockKey key = entry.getKey();
+            Stock stock = stockRepository.findForUpdate(key.productId(), key.warehouseId(), key.locationId())
+                    .orElseThrow(() -> new BizException("Current inventory is insufficient for outbound"));
+            if (n(stock.getQuantity()) - n(stock.getAllocatedQuantity()) < entry.getValue()) {
+                throw new BizException("Current inventory is insufficient for outbound");
+            }
+            lockedStocks.put(key, stock);
+        }
+        lockedStocks.forEach((key, stock) -> {
+            stock.setAllocatedQuantity(n(stock.getAllocatedQuantity()) + requiredByStock.get(key));
+            stockRepository.save(stock);
+        });
+        order.getItems().forEach(item -> item.setAllocatedQuantity(n(item.getQuantity())));
+        order.setStatus(OrderStatus.ALLOCATED);
+        order.setAllocatedAt(LocalDateTime.now());
+        order.setAllocatedBy(operatorName);
+        return outboundDetail(outboundOrderRepository.save(order));
+    }
+
+    @Transactional
+    public OutboundOrderDetailView assignPicking(Long id, String operatorName) {
+        OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("Outbound order does not exist"));
+        if (order.getStatus() != OrderStatus.ALLOCATED) {
+            throw new BizException("Only Allocated outbound orders can be assigned for picking");
+        }
+        order.setStatus(OrderStatus.READY_TO_PICK);
+        order.setAssignedAt(LocalDateTime.now());
+        order.setAssignedBy(operatorName);
+        return outboundDetail(outboundOrderRepository.save(order));
+    }
+
+    @Transactional
+    public OutboundOrderDetailView startPicking(Long id, String operatorName) {
+        OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("出库单不存在"));
+        if (order.getStatus() != OrderStatus.READY_TO_PICK) {
+            throw new BizException("只有待拣货的出库单可以开始拣货");
+        }
+        order.setStatus(OrderStatus.PICKING);
+        order.setPickingStartedAt(LocalDateTime.now());
+        order.setPickingStartedBy(operatorName);
+        return outboundDetail(outboundOrderRepository.save(order));
+    }
+
+    @Transactional
+    public OutboundOrderDetailView completePicking(Long id, PickingRequest request) {
+        OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("出库单不存在"));
+        if (order.getStatus() != OrderStatus.PICKING) {
+            throw new BizException("出库单不是拣货中状态");
+        }
+        Map<Long, Integer> pickedByItem = request.items().stream()
+                .collect(java.util.stream.Collectors.toMap(PickingLine::itemId, PickingLine::pickedQuantity,
+                        (first, second) -> second));
+        for (OutboundOrderItem item : order.getItems()) {
+            Integer picked = pickedByItem.get(item.getId());
+            if (picked == null || picked != n(item.getQuantity())) {
+                throw new BizException("拣货数量必须与订单数量一致");
+            }
+            item.setPickedQuantity(picked);
+        }
+        order.setStatus(OrderStatus.PICKED);
+        order.setPickedAt(LocalDateTime.now());
+        order.setPickedBy(request.operatorName());
+        return outboundDetail(outboundOrderRepository.save(order));
+    }
+
+    @Transactional
     public OutboundOrderDetailView confirmOutbound(Long id, String operatorName) {
         OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new BizException("出库单不存在"));
-        if (order.getStatus() != OrderStatus.CREATED) {
-            throw new BizException(order.getStatus() == OrderStatus.COMPLETED
-                    ? "出库单已完成，不能重复确认" : "出库单已取消，不能确认");
+        if (order.getStatus() != OrderStatus.PICKED) {
+            if (order.getStatus() == OrderStatus.COMPLETED) throw new BizException("出库单已完成，不能重复确认");
+            if (order.getStatus() == OrderStatus.CANCELLED) throw new BizException("出库单已取消，不能确认");
+            throw new BizException("请先完成拣货，再确认出库");
         }
+        for (OutboundOrderItem item : order.getItems()) {
+            Stock stock = stockRepository.findForUpdate(item.getProduct().getId(), item.getWarehouse().getId(),
+                            item.getLocation().getId())
+                    .orElseThrow(() -> new BizException("Current inventory is insufficient for outbound"));
+            if (n(stock.getQuantity()) < n(item.getPickedQuantity())
+                    || n(stock.getAllocatedQuantity()) < n(item.getAllocatedQuantity())) {
+                throw new BizException("Current inventory is insufficient for outbound");
+            }
+            stock.setAllocatedQuantity(n(stock.getAllocatedQuantity()) - n(item.getAllocatedQuantity()));
+            stockRepository.save(stock);
+            adjustStock(item.getProduct(), item.getWarehouse(), item.getLocation(), -n(item.getPickedQuantity()),
+                    MovementType.OUTBOUND, order.getOrderNo(), operatorName);
+            item.setAllocatedQuantity(0);
+        }
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(LocalDateTime.now());
+        order.setCompletedBy(operatorName);
+        return outboundDetail(outboundOrderRepository.save(order));
+    }
+
+    private Map<OutboundStockKey, Integer> requiredStock(OutboundOrder order) {
         Map<OutboundStockKey, Integer> requiredByStock = new LinkedHashMap<>();
         order.getItems().stream()
                 .sorted(Comparator.comparing((OutboundOrderItem item) -> item.getProduct().getId())
@@ -184,18 +288,16 @@ public class InventoryService {
                 throw new BizException("当前库存不足，无法出库");
             }
         }
-        for (OutboundOrderItem item : order.getItems()) {
-            adjustStock(item.getProduct(), item.getWarehouse(), item.getLocation(), -n(item.getQuantity()),
-                    MovementType.OUTBOUND, order.getOrderNo(), operatorName);
-        }
-        order.setStatus(OrderStatus.COMPLETED);
-        order.setCompletedAt(LocalDateTime.now());
-        order.setCompletedBy(operatorName);
-        return outboundDetail(outboundOrderRepository.save(order));
+        return requiredByStock;
     }
 
     @Transactional
     public OutboundOrderDetailView cancelOutbound(Long id, String operatorName) {
+        OutboundOrder current = outboundOrderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("Outbound order does not exist"));
+        if (!isInQueue(current.getStatus())) {
+            throw new BizException("Only In Queue outbound orders can be cancelled");
+        }
         OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new BizException("出库单不存在"));
         if (order.getStatus() == OrderStatus.COMPLETED) throw new BizException("已完成的出库单不能取消");
@@ -270,7 +372,8 @@ public class InventoryService {
                 .filter(s -> warehouseId == null || s.getWarehouse().getId().equals(warehouseId))
                 .filter(s -> locationId == null || s.getLocation().getId().equals(locationId))
                 .map(s -> new StockView(s.getId(), s.getProduct().getSku(), s.getProduct().getName(), s.getWarehouse().getName(),
-                        s.getLocation().getCode(), s.getQuantity(), s.getProduct().getSafetyStock(),
+                        s.getLocation().getCode(), s.getQuantity(), n(s.getAllocatedQuantity()),
+                        n(s.getQuantity()) - n(s.getAllocatedQuantity()), s.getProduct().getSafetyStock(),
                         status(s.getQuantity(), s.getProduct().getSafetyStock())))
                 .toList();
     }
@@ -280,10 +383,15 @@ public class InventoryService {
         return inboundDetail(inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在")));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public InboundOrderView getReceivableInboundOrder(String orderNo) {
         InboundOrder order = inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在"));
         validateReceivable(order);
+        if (isInQueue(order.getStatus())) {
+            order.setStatus(OrderStatus.RECEIVING);
+            order.setReceivingStartedAt(LocalDateTime.now());
+            inboundOrderRepository.save(order);
+        }
         return inboundView(order);
     }
 
@@ -311,7 +419,7 @@ public class InventoryService {
     public InboundOrderView receiveInbound(ReceiveRequest request) {
         if (request.quantity() == null || request.quantity() <= 0) throw new BizException("数量必须大于0");
         InboundOrder order = inboundOrderRepository.findByOrderNo(request.orderNo()).orElseThrow(() -> new BizException("入库单不存在"));
-        if (order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.COMPLETED) {
+        if (order.getStatus() != OrderStatus.RECEIVING) {
             throw new BizException("入库单状态不允许收货");
         }
         StorageLocation location = locationRepository.findByCode(request.locationCode()).orElseThrow(() -> new BizException("货位不存在或已禁用"));
@@ -328,10 +436,36 @@ public class InventoryService {
         item.setReceivedQuantity(afterReceived);
         boolean allDone = order.getItems().stream().allMatch(i -> n(i.getReceivedQuantity()) >= n(i.getQuantity()));
         if (allDone) {
-            order.setStatus(OrderStatus.COMPLETED);
-            order.setCompletedAt(LocalDateTime.now());
+            order.setStatus(OrderStatus.RECEIVED);
+            order.setReceivedAt(LocalDateTime.now());
         }
         return inboundView(inboundOrderRepository.save(order));
+    }
+
+    @Transactional
+    public InboundOrderDetailView confirmInbound(String orderNo, String operatorName) {
+        InboundOrder order = inboundOrderRepository.findByOrderNoForUpdate(orderNo)
+                .orElseThrow(() -> new BizException("Inbound order does not exist"));
+        if (order.getStatus() != OrderStatus.RECEIVED) {
+            throw new BizException("Only Received inbound orders can be confirmed");
+        }
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(LocalDateTime.now());
+        order.setCompletedBy(operatorName);
+        return inboundDetail(inboundOrderRepository.save(order));
+    }
+
+    @Transactional
+    public InboundOrderDetailView cancelInbound(String orderNo, String operatorName) {
+        InboundOrder order = inboundOrderRepository.findByOrderNoForUpdate(orderNo)
+                .orElseThrow(() -> new BizException("Inbound order does not exist"));
+        if (!isInQueue(order.getStatus())) {
+            throw new BizException("Only In Queue inbound orders can be cancelled");
+        }
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setCancelledAt(LocalDateTime.now());
+        order.setCancelledBy(operatorName);
+        return inboundDetail(inboundOrderRepository.save(order));
     }
 
     private void adjustStock(Product product, Warehouse warehouse, StorageLocation location, int delta,
@@ -376,6 +510,7 @@ public class InventoryService {
             stock.setWarehouse(warehouse);
             stock.setLocation(location);
             stock.setQuantity(0);
+            stock.setAllocatedQuantity(0);
             return stock;
         });
     }
@@ -443,7 +578,7 @@ public class InventoryService {
     }
 
     private void validateReceivable(InboundOrder order) {
-        if (order.getStatus() != OrderStatus.CREATED) {
+        if (!isInQueue(order.getStatus()) && order.getStatus() != OrderStatus.RECEIVING) {
             throw new BizException("入库单不是待收货状态");
         }
     }
@@ -479,7 +614,8 @@ public class InventoryService {
             histories.add(new OrderHistoryView(order.getCompletedAt(), "COMPLETE", order.getOperatorName(), "入库订单完成"));
         }
         return new InboundOrderDetailView(order.getOrderNo(), order.getOperatorName(), order.getType().name(),
-                order.getStatus(), order.getRemark(), order.getCreatedAt(), order.getCompletedAt(),
+                order.getStatus(), order.getRemark(), order.getCreatedAt(), order.getReceivingStartedAt(),
+                order.getReceivedAt(), order.getCompletedAt(), order.getCancelledAt(),
                 view.expectedTotal(), view.receivedTotal(), view.progress(), view.items(), histories);
     }
 
@@ -506,16 +642,28 @@ public class InventoryService {
     private OutboundOrderDetailView outboundDetail(OutboundOrder order) {
         List<OutboundItemView> items = order.getItems().stream().map(item -> {
             Product product = item.getProduct();
-            int available = stockRepository.findByProductIdAndWarehouseIdAndLocationId(
+            Stock stock = stockRepository.findByProductIdAndWarehouseIdAndLocationId(
                     product.getId(), item.getWarehouse().getId(), item.getLocation().getId())
-                    .map(Stock::getQuantity).orElse(0);
+                    .orElse(null);
+            int available = stock == null ? 0 : n(stock.getQuantity()) - n(stock.getAllocatedQuantity());
+            String pickingStatus = n(item.getPickedQuantity()) <= 0 ? "PENDING"
+                    : n(item.getPickedQuantity()) < n(item.getQuantity()) ? "PARTIAL" : "PICKED";
             return new OutboundItemView(item.getId(), product.getId(), product.getSku(), product.getBarcode(),
                     product.getName(), product.getModelSpec(), product.getUnitName(), item.getQuantity(),
+                    n(item.getAllocatedQuantity()), n(item.getPickedQuantity()), pickingStatus,
                     item.getWarehouse().getId(), item.getWarehouse().getName(), item.getLocation().getId(),
-                    item.getLocation().getCode(), available);
+                    item.getLocation().getCode(),
+                    item.getLocation().getShelf() == null ? "" : item.getLocation().getShelf().getCode(), available);
         }).toList();
         List<OrderHistoryView> histories = new java.util.ArrayList<>();
         histories.add(new OrderHistoryView(order.getCreatedAt(), "CREATE", order.getOperatorName(), "创建出库订单"));
+        if (order.getPickingStartedAt() != null) {
+            histories.add(new OrderHistoryView(order.getPickingStartedAt(), "PICKING",
+                    order.getPickingStartedBy(), "开始拣货"));
+        }
+        if (order.getPickedAt() != null) {
+            histories.add(new OrderHistoryView(order.getPickedAt(), "PICKED", order.getPickedBy(), "拣货完成"));
+        }
         movementRepository.findBySourceNoOrderByMovementTimeDesc(order.getOrderNo()).forEach(movement ->
                 histories.add(new OrderHistoryView(movement.getMovementTime(), movement.getType().name(),
                         movement.getOperatorName(), movement.getProduct().getSku() + " / "
@@ -529,7 +677,9 @@ public class InventoryService {
         return new OutboundOrderDetailView(order.getId(), order.getOrderNo(), order.getType().name(),
                 order.getStatus(), order.getOperatorName(), order.getReceiverName(), order.getReceiverPhone(),
                 order.getAddress(), order.getReason(), order.getTrackingNo(), order.getRemark(),
-                order.getCreatedAt(), order.getCompletedAt(), order.getCancelledAt(),
+                order.getCreatedAt(), order.getAllocatedAt(), order.getAssignedAt(),
+                order.getPickingStartedAt(), order.getPickedAt(),
+                order.getCompletedAt(), order.getCancelledAt(),
                 items.stream().mapToInt(item -> n(item.quantity())).sum(), items, histories);
     }
 
@@ -562,6 +712,10 @@ public class InventoryService {
 
     private int n(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private boolean isInQueue(OrderStatus status) {
+        return status == OrderStatus.IN_QUEUE || status == OrderStatus.CREATED;
     }
 
     private record OutboundStockKey(Long productId, Long warehouseId, Long locationId) {}

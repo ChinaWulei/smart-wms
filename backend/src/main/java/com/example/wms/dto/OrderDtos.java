@@ -36,6 +36,16 @@ public class OrderDtos {
             @NotEmpty @Valid List<LineItem> items
     ) {}
 
+    public record PickingRequest(
+            String operatorName,
+            @NotEmpty @Valid List<PickingLine> items
+    ) {}
+
+    public record PickingLine(
+            @NotNull Long itemId,
+            @NotNull @Min(0) Integer pickedQuantity
+    ) {}
+
     public record CheckRequest(
             String operatorName,
             String remark,

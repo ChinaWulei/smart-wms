@@ -2,6 +2,10 @@
   <main class="app">
     <section v-if="!user" class="login-page">
       <form class="login-card" @submit.prevent="login">
+        <select class="language-select" v-model="locale" @change="switchLanguage">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
         <h1>{{ text.system }}</h1>
         <p>{{ text.position }}</p>
         <label>{{ text.account }}<input ref="loginUserRef" v-model.trim="loginForm.username" autocomplete="username"></label>
@@ -19,7 +23,10 @@
             <h1>{{ labels.selectWarehouse }}</h1>
             <p>{{ labels.selectWarehouseHint }}</p>
           </div>
-          <button @click="logout">{{ text.logout }}</button>
+          <div class="head-actions">
+            <select v-model="locale" @change="switchLanguage"><option value="zh">中文</option><option value="en">English</option></select>
+            <button @click="logout">{{ text.logout }}</button>
+          </div>
         </header>
         <div class="warehouse-choice-grid">
           <button v-for="warehouse in warehouses" :key="warehouse.id" @click="selectWarehouse(warehouse.id)">
@@ -39,6 +46,12 @@
           <span>{{ user.displayName || user.username }} / {{ roleName(user.role) }} / {{ currentWarehouse?.code }}</span>
         </div>
         <div class="top-actions">
+          <label>{{ labels.language }}
+            <select v-model="locale" @change="switchLanguage">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
           <label class="warehouse-switcher">{{ labels.currentWarehouse }}
             <select v-model.number="selectedWarehouseId" @change="switchWarehouse">
               <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.code }}</option>
@@ -95,7 +108,13 @@
             <label>{{ labels.status }}
               <select v-model="orderSearchFilters.status">
                 <option value="">{{ labels.allStatus }}</option>
-                <option value="CREATED">{{ orderStatus('CREATED') }}</option>
+                <option value="IN_QUEUE">{{ orderStatus('IN_QUEUE') }}</option>
+                <option value="RECEIVING">{{ orderStatus('RECEIVING') }}</option>
+                <option value="RECEIVED">{{ orderStatus('RECEIVED') }}</option>
+                <option value="ALLOCATED">{{ orderStatus('ALLOCATED') }}</option>
+                <option value="READY_TO_PICK">{{ orderStatus('READY_TO_PICK') }}</option>
+                <option value="PICKING">{{ orderStatus('PICKING') }}</option>
+                <option value="PICKED">{{ orderStatus('PICKED') }}</option>
                 <option value="COMPLETED">{{ orderStatus('COMPLETED') }}</option>
                 <option value="CANCELLED">{{ orderStatus('CANCELLED') }}</option>
               </select>
@@ -134,7 +153,7 @@
                   <td><button v-if="order.direction === 'INBOUND'" class="link-button" @click="openOrderDetail(order.orderNo)">{{ order.orderNo }}</button><b v-else>{{ order.orderNo }}</b></td>
                   <td><span :class="['direction-tag', order.direction.toLowerCase()]">{{ directionName(order.direction) }}</span></td>
                   <td>{{ typeName(order.type) }}</td>
-                  <td><span :class="['status-tag', order.status.toLowerCase()]">{{ orderStatus(order.status) }}</span></td>
+                  <td><span :class="['status-tag', order.status.toLowerCase()]">{{ order.direction === 'OUTBOUND' ? outboundStatus(order.status) : orderStatus(order.status) }}</span></td>
                   <td>{{ order.operatorName || '-' }}</td>
                   <td>{{ order.itemCount || 0 }}</td>
                   <td>{{ formatTime(order.createdAt) }}</td>
@@ -166,7 +185,9 @@
           <div class="panel-head">
             <h2>{{ labels.orderDetail }} {{ inboundOrderDetail?.orderNo || '' }}</h2>
             <div class="head-actions">
-              <button v-if="inboundOrderDetail?.status === 'CREATED'" class="primary" @click="openReceiveOrder(inboundOrderDetail.orderNo)">{{ labels.receiving }}</button>
+              <button v-if="['CREATED', 'IN_QUEUE', 'RECEIVING'].includes(inboundOrderDetail?.status)" class="primary" @click="openReceiveOrder(inboundOrderDetail.orderNo)">{{ labels.receiving }}</button>
+              <button v-if="inboundOrderDetail?.status === 'RECEIVED'" class="primary" :disabled="loading.inboundAction" @click="confirmInboundOrder">{{ labels.confirmInbound }}</button>
+              <button v-if="['CREATED', 'IN_QUEUE'].includes(inboundOrderDetail?.status)" class="danger" :disabled="loading.inboundAction" @click="cancelInboundOrder">{{ labels.cancelOrder }}</button>
               <button @click="openView('inbound-orders')">{{ text.back }}</button>
             </div>
           </div>
@@ -216,15 +237,40 @@
           </div>
         </section>
 
+        <section v-if="view === 'picking'" class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>{{ labels.pickingManagement }}</h2>
+              <p class="panel-description">{{ labels.pickingHint }}</p>
+            </div>
+            <button @click="loadOutboundOrders">{{ text.refresh }}</button>
+          </div>
+          <form class="picking-search" @submit.prevent="searchPickingOrder">
+            <input v-model.trim="pickingOrderNo" :placeholder="labels.searchPickingPlaceholder">
+            <button class="primary">{{ labels.search }}</button>
+          </form>
+          <div class="cards">
+            <article v-for="order in filteredPickingOrders" :key="order.id" class="location-card clickable" @click="enterPickingOrder(order)">
+              <b>{{ order.orderNo }}</b>
+              <span>{{ typeName(order.type) }} / {{ outboundStatus(order.status) }}</span>
+              <em>{{ order.itemCount || 0 }} SKU / {{ order.operatorName || '-' }}</em>
+            </article>
+          </div>
+          <div v-if="!filteredPickingOrders.length" class="empty-state">{{ labels.noPickingOrders }}</div>
+        </section>
+
         <section v-if="view === 'outbound-detail'" class="panel order-detail-panel">
           <div class="panel-head">
             <div>
               <h2>{{ labels.outboundDetail }} {{ outboundOrderDetail?.orderNo || '' }}</h2>
-              <p class="panel-description">{{ outboundOrderDetail ? orderStatus(outboundOrderDetail.status) : '' }}</p>
+              <p class="panel-description">{{ outboundOrderDetail ? outboundStatus(outboundOrderDetail.status) : '' }}</p>
             </div>
             <div class="head-actions">
-              <button v-if="outboundOrderDetail?.status === 'CREATED'" class="primary" :disabled="loading.outboundAction" @click="confirmOutboundOrder">{{ labels.confirmOutbound }}</button>
-              <button v-if="outboundOrderDetail?.status === 'CREATED'" class="danger" :disabled="loading.outboundAction" @click="cancelOutboundOrder">{{ labels.cancelOutbound }}</button>
+              <button v-if="['CREATED', 'IN_QUEUE'].includes(outboundOrderDetail?.status)" class="primary" :disabled="loading.outboundAction" @click="generatePickList">{{ labels.generatePickList }}</button>
+              <button v-if="outboundOrderDetail?.status === 'ALLOCATED'" class="primary" :disabled="loading.outboundAction" @click="assignOutboundPicking">{{ labels.assignPicking }}</button>
+              <button v-if="outboundOrderDetail?.status === 'READY_TO_PICK'" class="primary" :disabled="loading.outboundAction" @click="startOutboundPicking">{{ labels.enterPicking }}</button>
+              <button v-if="outboundOrderDetail?.status === 'PICKED'" class="primary" :disabled="loading.outboundAction" @click="confirmOutboundOrder">{{ labels.confirmOutbound }}</button>
+              <button v-if="['CREATED', 'IN_QUEUE'].includes(outboundOrderDetail?.status)" class="danger" :disabled="loading.outboundAction" @click="cancelOutboundOrder">{{ labels.cancelOutbound }}</button>
               <button @click="openView('outbound-orders')">{{ text.back }}</button>
             </div>
           </div>
@@ -233,8 +279,10 @@
               <h3>{{ labels.orderBasic }}</h3>
               <div class="detail-kv"><span>{{ labels.orderNo }}</span><b>{{ outboundOrderDetail.orderNo }}</b></div>
               <div class="detail-kv"><span>{{ labels.orderType }}</span><b>{{ typeName(outboundOrderDetail.type) }}</b></div>
-              <div class="detail-kv"><span>{{ labels.status }}</span><b>{{ orderStatus(outboundOrderDetail.status) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.status }}</span><b>{{ outboundStatus(outboundOrderDetail.status) }}</b></div>
               <div class="detail-kv"><span>{{ labels.createdAt }}</span><b>{{ formatTime(outboundOrderDetail.createdAt) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.pickingStartedAt }}</span><b>{{ formatTime(outboundOrderDetail.pickingStartedAt) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.pickedAt }}</span><b>{{ formatTime(outboundOrderDetail.pickedAt) }}</b></div>
               <div class="detail-kv"><span>{{ labels.outboundAt }}</span><b>{{ formatTime(outboundOrderDetail.completedAt) }}</b></div>
               <div class="detail-kv"><span>{{ labels.reason }}</span><b>{{ outboundOrderDetail.reason || '-' }}</b></div>
               <div class="detail-kv"><span>{{ labels.remark }}</span><b>{{ outboundOrderDetail.remark || '-' }}</b></div>
@@ -253,7 +301,7 @@
                 <b>{{ item.sku }} · {{ item.productName }}</b>
                 <span>{{ item.modelSpec || '-' }} / {{ item.unitName || '-' }}</span>
                 <em>{{ item.warehouseName }} / {{ item.locationCode }}</em>
-                <footer>{{ labels.outboundQty }} {{ item.quantity }} / {{ labels.availableQty }} {{ item.availableQuantity }}</footer>
+                <footer>{{ labels.outboundQty }} {{ item.quantity }} / {{ labels.pickedQty }} {{ item.pickedQuantity || 0 }} / {{ labels.availableQty }} {{ item.availableQuantity }}</footer>
               </article>
             </section>
             <section class="detail-column outbound-history-column">
@@ -266,6 +314,24 @@
               </article>
             </section>
           </div>
+          <section v-if="outboundOrderDetail?.status === 'PICKING'" class="picking-workspace">
+            <div class="panel-head">
+              <div><h3>{{ labels.pickingTask }}</h3><p class="panel-description">{{ labels.pickingTaskHint }}</p></div>
+              <button class="primary" :disabled="loading.outboundAction" @click="completeOutboundPicking">{{ labels.completePicking }}</button>
+            </div>
+            <div class="picking-lines">
+              <article v-for="item in outboundOrderDetail.items" :key="item.itemId" :class="['picking-line', pickingItemClass(item)]">
+                <div>
+                  <b>{{ item.sku }} · {{ item.productName }}</b>
+                  <span>{{ labels.shelfCode }} {{ item.shelfCode || '-' }} / {{ labels.locationCode }} {{ item.locationCode }}</span>
+                  <em>{{ pickingStatusName(item) }}</em>
+                </div>
+                <label>{{ labels.requiredQty }}<input :value="item.quantity" disabled></label>
+                <label>{{ labels.actualPickedQty }}<input v-model.number="pickingQuantities[item.itemId]" type="number" min="0" :max="item.quantity"></label>
+                <button type="button" @click="markItemPicked(item)">{{ labels.markPicked }}</button>
+              </article>
+            </div>
+          </section>
         </section>
 
         <section v-if="view === 'inbound-create' || view === 'outbound-create'" class="panel order-create-panel">
@@ -539,6 +605,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { api } from './api'
 
+const locale = ref(localStorage.getItem('wms-locale') || 'zh')
 const zh = s => s
 const text = {
   system: '\u667a\u4ed3\u4e91 WMS',
@@ -591,6 +658,18 @@ const labels = {
   outboundDetail: '\u51fa\u5e93\u8ba2\u5355\u8be6\u60c5',
   confirmOutbound: '\u786e\u8ba4\u51fa\u5e93',
   cancelOutbound: '\u53d6\u6d88\u51fa\u5e93',
+  pickingManagement: '\u62e3\u8d27\u51fa\u5e93',
+  pickingHint: '\u5f85\u62e3\u8d27\u3001\u62e3\u8d27\u4e2d\u548c\u62e3\u8d27\u5b8c\u6210\u7684\u51fa\u5e93\u4efb\u52a1',
+  noPickingOrders: '\u6682\u65e0\u5f85\u5904\u7406\u7684\u62e3\u8d27\u4efb\u52a1',
+  startPicking: '\u5f00\u59cb\u62e3\u8d27',
+  completePicking: '\u5b8c\u6210\u62e3\u8d27',
+  pickingStartedAt: '\u5f00\u59cb\u62e3\u8d27\u65f6\u95f4',
+  pickedAt: '\u62e3\u8d27\u5b8c\u6210\u65f6\u95f4',
+  pickedQty: '\u5df2\u62e3\u6570\u91cf',
+  pickingTask: '\u62e3\u8d27\u4efb\u52a1',
+  pickingTaskHint: '\u6309\u8d27\u4f4d\u62e3\u53d6\u5546\u54c1\uff0c\u6838\u5bf9\u5b9e\u9645\u62e3\u8d27\u6570\u91cf\u540e\u5b8c\u6210\u4efb\u52a1',
+  requiredQty: '\u5e94\u62e3\u6570\u91cf',
+  actualPickedQty: '\u5b9e\u9645\u62e3\u8d27\u6570\u91cf',
   outboundAt: '\u51fa\u5e93\u65f6\u95f4',
   receiverInfo: '\u6536\u8d27\u4fe1\u606f',
   receiverName: '\u6536\u8d27\u4eba/\u5ba2\u6237\u540d\u79f0',
@@ -666,12 +745,20 @@ const labels = {
   noDistributionData: '\u5f53\u524d\u4ed3\u5e93\u6682\u65e0\u8d27\u4f4d\u6570\u636e',
   unshelved: '\u672a\u5206\u914d\u8d27\u67b6',
   stockQuantity: '\u5e93\u5b58\u6570\u91cf',
-  utilization: '\u4f7f\u7528\u7387'
+  utilization: '\u4f7f\u7528\u7387',
+  language: '\u8bed\u8a00',
+  confirmInbound: '\u786e\u8ba4\u5165\u5e93\u5b8c\u6210',
+  cancelOrder: '\u53d6\u6d88\u8ba2\u5355',
+  generatePickList: 'Generate Pick List',
+  assignPicking: 'Assign Picking',
+  enterPicking: '\u8fdb\u5165\u62e3\u8d27',
+  searchPickingPlaceholder: '\u8f93\u5165\u51fa\u5e93\u8ba2\u5355\u53f7',
+  markPicked: '\u6807\u8bb0\u5df2\u62e3'
 }
 const modules = [
   module('order', '\u8ba2\u5355\u7ba1\u7406', '\u5355', [['order-search', labels.orderSearch]]),
   module('inbound', '\u5165\u5e93\u6a21\u5757', '\u5165', [['inbound-orders', labels.inboundOrders], ['inbound-create', labels.createInbound], ['receiving', labels.receiving], ['inbound-records', '\u5165\u5e93\u8bb0\u5f55']]),
-  module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', labels.outboundOrders], ['outbound-create', labels.createOutbound], ['picking', '\u62e3\u8d27\u51fa\u5e93'], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55']]),
+  module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', labels.outboundOrders], ['outbound-create', labels.createOutbound], ['picking', labels.pickingManagement], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55']]),
   module('stock', '\u5e93\u5b58\u7ba1\u7406', '\u5b58', [['stock-query', labels.stockQuery], ['stock-flow', labels.stockFlow], ['stock-adjust', '\u5e93\u5b58\u8c03\u6574'], ['stock-distribution', '\u5546\u54c1\u5e93\u5b58\u5206\u5e03']]),
   module('shelf', '\u8d27\u67b6\u7ba1\u7406', '\u67b6', [['shelf-create', labels.shelfCreate], ['shelf-list', '\u8d27\u67b6\u5217\u8868'], ['location-query', labels.locationQuery], ['label-print', '\u8d27\u67b6\u7801\u6253\u5370']]),
   module('product', '\u5546\u54c1\u7ba1\u7406', '\u54c1', [['product-list', '\u5546\u54c1\u5217\u8868'], ['product-create', '\u65b0\u589e\u5546\u54c1'], ['product-category', '\u5546\u54c1\u5206\u7c7b'], ['barcode', '\u6761\u7801\u7ba1\u7406']]),
@@ -682,6 +769,89 @@ const modules = [
 ]
 function module(key, label, icon, subs) {
   return { key, label: zh(label), icon, subs: subs.map(([key, label]) => ({ key, label: zh(label) })) }
+}
+
+const zhText = { ...text }
+const zhLabels = { ...labels }
+const englishText = {
+  system: 'Smart WMS', position: 'Mobile-first warehouse operations', account: 'Account', password: 'Password',
+  login: 'Log in', loggingIn: 'Logging in...', workbench: 'Smart WMS Workbench', logout: 'Log out',
+  pickModule: 'Select an operation module', phaseHint: 'Reserved module', refresh: 'Refresh', back: 'Back',
+  select: 'Select', submitting: 'Submitting...', clear: 'Clear', backWorkbench: 'Back to Workbench'
+}
+const englishLabels = {
+  orderSearch: 'Order Search', orderSearchHint: 'Filter inbound and outbound orders by status, creation date, and creator',
+  orderNo: 'Order No.', orderNoPlaceholder: 'Enter order number', direction: 'Direction', allDirections: 'All Directions',
+  inbound: 'Inbound', outbound: 'Outbound', creator: 'Creator', creatorPlaceholder: 'Enter creator',
+  createdFrom: 'Created From', createdTo: 'Created To', createdAt: 'Created At', itemCount: 'SKU Count',
+  search: 'Search', searching: 'Searching...', reset: 'Reset', searchResult: 'Results', records: 'records',
+  noOrders: 'No matching orders', selectWarehouse: 'Select Warehouse',
+  selectWarehouseHint: 'Select a warehouse. You can switch it later in the top-right corner.',
+  enterWarehouse: 'Enter Warehouse', currentWarehouse: 'Current Warehouse', noWarehouse: 'No warehouse available',
+  inboundOrders: 'Inbound Orders', outboundOrders: 'Outbound Orders', createInbound: 'New Inbound Order',
+  createOutbound: 'New Outbound Order', outboundDetail: 'Outbound Order Details', confirmOutbound: 'Confirm Outbound',
+  cancelOutbound: 'Cancel Outbound', pickingManagement: 'Picking', pickingHint: 'Search and process picking tasks',
+  noPickingOrders: 'No picking tasks', startPicking: 'Start Picking', completePicking: 'Complete Picking',
+  pickingStartedAt: 'Picking Started At', pickedAt: 'Picked At', pickedQty: 'Picked Qty',
+  pickingTask: 'Picking Task', pickingTaskHint: 'Pick each item from its shelf and verify the quantity',
+  requiredQty: 'Required Qty', actualPickedQty: 'Actual Picked Qty', outboundAt: 'Outbound At',
+  receiverInfo: 'Receiver Information', receiverName: 'Receiver / Customer', receiverNamePlaceholder: 'Enter receiver or customer',
+  receiverPhone: 'Phone', address: 'Address', reason: 'Outbound Reason', trackingNo: 'Tracking No.',
+  outboundQty: 'Outbound Qty', availableQty: 'Available Qty', orderType: 'Order Type', operator: 'Operator',
+  orderItems: 'Order Items', addItem: 'Add Item', removeItem: 'Remove', submitOrder: 'Submit Order',
+  product: 'Product', productSearchPlaceholder: 'Enter SKU, barcode, or product name', noProductMatch: 'No matching product',
+  orderDetail: 'Order Details', orderBasic: 'Basic Information', productInfo: 'Product Information',
+  orderHistory: 'Order History', warehouse: 'Warehouse', shelfCode: 'Shelf', capacity: 'Capacity', remark: 'Remark',
+  allWarehouse: 'All Warehouses', allStatus: 'All Statuses', receiving: 'Receiving', receiveOrder: 'Receive Order',
+  inboundNo: 'Inbound No.', supplier: 'Supplier', status: 'Status', progress: 'Progress', locationCode: 'Location',
+  productCode: 'Product Code / Barcode', qty: 'Quantity', expectedQty: 'Expected Qty', receivedQty: 'Received Qty',
+  remainingQty: 'Remaining Qty', stockQuery: 'Stock Query', stockFlow: 'Stock Movements',
+  language: 'Language', confirmInbound: 'Confirm', cancelOrder: 'Cancel Order',
+  generatePickList: 'Generate Pick List', assignPicking: 'Assign Picking', enterPicking: 'Enter Picking',
+  searchPickingPlaceholder: 'Enter outbound order number', markPicked: 'Mark Picked',
+  shelfCreate: 'Create Shelf', shelfName: 'Shelf Name', previewLocation: 'Preview Locations', generate: 'Generate',
+  willGenerate: 'Locations to generate', locationQuery: 'Location Query', available: 'Available / In Use',
+  full: 'Full', disabled: 'Disabled', changeOrder: 'Change Order', fixedQty: 'Fixed 1 Item',
+  customQty: 'Custom Quantity', receivingNow: 'Receiving...', autoReceiveHint: 'Scan to receive a fixed quantity, or enter a custom quantity and press Enter',
+  scanResult: 'Current Scan Result', productName: 'Product Name', spec: 'Specification', unit: 'Unit',
+  thisQty: 'Quantity This Time', stockDistribution: '3D Inventory Distribution',
+  stockDistributionHint: 'View inventory occupancy by warehouse and shelf; select a location for item details',
+  horizontalAngle: 'Horizontal Angle', pitchAngle: 'Pitch Angle', resetView: 'Reset View',
+  emptyLocation: 'Empty Location', occupiedLocation: 'Occupied', fullLocation: 'Full',
+  locations: 'locations', pieces: 'items', noDistributionData: 'No location data for this warehouse',
+  unshelved: 'Unassigned Shelf', stockQuantity: 'Stock Quantity', utilization: 'Utilization'
+}
+const moduleEnglish = {
+  order: 'Order Management', inbound: 'Inbound', outbound: 'Outbound', stock: 'Inventory',
+  shelf: 'Shelf Management', product: 'Product Management', check: 'Stock Check',
+  alert: 'Inventory Alerts', ai: 'AI Warehouse Assistant', settings: 'Settings'
+}
+const submoduleEnglish = {
+  'order-search': 'Order Search', 'inbound-orders': 'Inbound Orders', 'inbound-create': 'New Inbound Order',
+  receiving: 'Receiving', 'inbound-records': 'Inbound Records', 'outbound-orders': 'Outbound Orders',
+  'outbound-create': 'New Outbound Order', picking: 'Picking', 'outbound-records': 'Outbound Records',
+  'stock-query': 'Stock Query', 'stock-flow': 'Stock Movements', 'stock-adjust': 'Stock Adjustment',
+  'stock-distribution': 'Inventory Distribution', 'shelf-create': 'Create Shelf', 'shelf-list': 'Shelf List',
+  'location-query': 'Location Query', 'label-print': 'Print Shelf Labels', 'product-list': 'Product List',
+  'product-create': 'New Product', 'product-category': 'Product Categories', barcode: 'Barcode Management',
+  'check-create': 'New Stock Check', 'check-task': 'Stock Check Tasks', 'pda-check': 'PDA Stock Check',
+  'check-record': 'Stock Check Records', 'low-alert': 'Low Stock Alerts', 'over-alert': 'Overstock Alerts',
+  'alert-record': 'Alert Records', 'ai-chat': 'AI Chat', replenish: 'Replenishment Suggestions',
+  'ai-analysis': 'Exception Analysis', 'ai-report': 'Warehouse Reports', users: 'User Management',
+  roles: 'Roles and Permissions', 'warehouse-setting': 'Warehouse Settings', params: 'System Parameters'
+}
+const moduleChinese = Object.fromEntries(modules.map(item => [item.key, item.label]))
+const submoduleChinese = Object.fromEntries(modules.flatMap(item => item.subs.map(sub => [sub.key, sub.label])))
+function switchLanguage() {
+  localStorage.setItem('wms-locale', locale.value)
+  Object.assign(text, locale.value === 'en' ? englishText : zhText)
+  Object.assign(labels, locale.value === 'en' ? englishLabels : zhLabels)
+  modules.forEach(item => {
+    item.label = locale.value === 'en' ? (moduleEnglish[item.key] || item.label) : moduleChinese[item.key]
+    item.subs.forEach(sub => {
+      sub.label = locale.value === 'en' ? (submoduleEnglish[sub.key] || sub.label) : submoduleChinese[sub.key]
+    })
+  })
 }
 
 const user = ref(JSON.parse(localStorage.getItem('wms-user') || 'null'))
@@ -705,6 +875,8 @@ const dashboard = ref({})
 const inboundOrder = ref(null)
 const inboundOrderDetail = ref(null)
 const outboundOrderDetail = ref(null)
+const pickingQuantities = reactive({})
+const pickingOrderNo = ref('')
 const activeReceiveOrderNo = ref('')
 const activeDetailOrderNo = ref('')
 const activeOutboundOrderId = ref(null)
@@ -714,7 +886,7 @@ const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
 const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
-const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, outboundAction: false })
+const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, inboundAction: false, outboundAction: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
 const orderSearchFilters = reactive({ orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
@@ -728,6 +900,11 @@ const productCodeRef = refs.productCode
 const quantityRef = refs.quantity
 
 const currentSubmodules = computed(() => modules.find(m => m.key === activeModule.value)?.subs || [])
+const pickingOrders = computed(() => outboundOrders.value.filter(order => ['READY_TO_PICK', 'PICKING', 'PICKED'].includes(order.status)))
+const filteredPickingOrders = computed(() => {
+  const keyword = pickingOrderNo.value.trim().toLowerCase()
+  return keyword ? pickingOrders.value.filter(order => order.orderNo.toLowerCase().includes(keyword)) : pickingOrders.value
+})
 const currentWarehouse = computed(() => warehouses.value.find(warehouse => warehouse.id === selectedWarehouseId.value) || null)
 const stockByLocation = computed(() => stocks.value.reduce((map, stock) => {
   if (!map[stock.locationCode]) map[stock.locationCode] = []
@@ -753,28 +930,28 @@ const distributionShelves = computed(() => {
 const isInboundCreate = computed(() => view.value === 'inbound-create')
 const currentOrderTypes = computed(() => isInboundCreate.value
   ? [
-      { value: 'PURCHASE', label: '\u91c7\u8d2d\u5165\u5e93' },
-      { value: 'RETURN', label: '\u9000\u8d27\u5165\u5e93' },
-      { value: 'TRANSFER', label: '\u8c03\u62e8\u5165\u5e93' },
-      { value: 'INVENTORY_GAIN', label: '\u76d8\u76c8\u5165\u5e93' }
+      { value: 'PURCHASE', label: typeName('PURCHASE') },
+      { value: 'RETURN', label: typeName('RETURN') },
+      { value: 'TRANSFER', label: typeName('TRANSFER') },
+      { value: 'INVENTORY_GAIN', label: typeName('INVENTORY_GAIN') }
     ]
   : [
-      { value: 'SALE', label: '\u9500\u552e\u51fa\u5e93' },
-      { value: 'REQUISITION', label: '\u9886\u7528\u51fa\u5e93' },
-      { value: 'TRANSFER', label: '\u8c03\u62e8\u51fa\u5e93' },
-      { value: 'DAMAGE', label: '\u62a5\u635f\u51fa\u5e93' },
-      { value: 'INVENTORY_LOSS', label: '\u76d8\u4e8f\u51fa\u5e93' }
+      { value: 'SALE', label: typeName('SALE') },
+      { value: 'REQUISITION', label: typeName('REQUISITION') },
+      { value: 'TRANSFER', label: typeName('TRANSFER') },
+      { value: 'DAMAGE', label: typeName('DAMAGE') },
+      { value: 'INVENTORY_LOSS', label: typeName('INVENTORY_LOSS') }
     ])
 const placeholderView = computed(() => {
-  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'outbound-detail', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
+  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'outbound-detail', 'inbound-create', 'outbound-create', 'picking', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
   return currentSubmodules.value.find(s => s.key === view.value)?.label || ''
 })
 const overviewCards = computed(() => [
   { label: '\u4eca\u65e5\u5165\u5e93', value: dashboard.value.todayInbound || 0 },
   { label: '\u4eca\u65e5\u51fa\u5e93', value: dashboard.value.todayOutbound || 0 },
   { label: '\u5e93\u5b58\u9884\u8b66', value: dashboard.value.warningCount || 0 },
-  { label: '\u5f85\u6536\u8d27\u8ba2\u5355', value: inboundOrders.value.filter(o => o.status === 'CREATED').length || 1 },
-  { label: '\u5f85\u51fa\u5e93\u8ba2\u5355', value: 1 }
+  { label: locale.value === 'en' ? 'Inbound Queue' : '\u5f85\u6536\u8d27\u8ba2\u5355', value: inboundOrders.value.filter(o => ['CREATED', 'IN_QUEUE', 'RECEIVING', 'RECEIVED'].includes(o.status)).length },
+  { label: locale.value === 'en' ? 'Outbound Queue' : '\u5f85\u51fa\u5e93\u8ba2\u5355', value: outboundOrders.value.filter(o => !['COMPLETED', 'CANCELLED'].includes(o.status)).length }
 ])
 
 async function login() {
@@ -867,6 +1044,7 @@ async function loadView(key) {
   if (key === 'order-search') await searchOrders()
   if (key === 'inbound-orders') await loadInboundOrders()
   if (key === 'outbound-orders') await loadOutboundOrders()
+  if (key === 'picking') await loadOutboundOrders()
   if (key === 'location-query') await loadLocations()
   if (key === 'stock-query') await loadStocks()
   if (key === 'stock-flow') await loadMovements()
@@ -931,7 +1109,123 @@ async function syncRoute() {
 async function loadInboundOrders() { inboundOrders.value = await api.get(`/inbound?warehouseId=${selectedWarehouseId.value}`) }
 async function loadOrderDetail(orderNo) { inboundOrderDetail.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`) }
 async function loadOutboundOrders() { outboundOrders.value = await api.get(`/outbound-orders?warehouseId=${selectedWarehouseId.value}`) }
-async function loadOutboundOrderDetail(id) { outboundOrderDetail.value = await api.get(`/outbound-orders/${id}`) }
+async function loadOutboundOrderDetail(id) {
+  outboundOrderDetail.value = await api.get(`/outbound-orders/${id}`)
+  initializePickingQuantities()
+}
+function initializePickingQuantities() {
+  Object.keys(pickingQuantities).forEach(key => delete pickingQuantities[key])
+  outboundOrderDetail.value?.items.forEach(item => {
+    pickingQuantities[item.itemId] = item.pickedQuantity || 0
+  })
+}
+async function confirmInboundOrder() {
+  if (!inboundOrderDetail.value || loading.inboundAction) return
+  loading.inboundAction = true
+  try {
+    const operator = user.value?.displayName || user.value?.username || ''
+    inboundOrderDetail.value = await api.post(`/inbound/${encodeURIComponent(inboundOrderDetail.value.orderNo)}/confirm?operatorName=${encodeURIComponent(operator)}`)
+    showToast(locale.value === 'en' ? 'Inbound order completed' : '\u5165\u5e93\u8ba2\u5355\u5df2\u5b8c\u6210')
+    await loadInboundOrders()
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.inboundAction = false
+  }
+}
+async function cancelInboundOrder() {
+  if (!inboundOrderDetail.value || loading.inboundAction) return
+  loading.inboundAction = true
+  try {
+    const operator = user.value?.displayName || user.value?.username || ''
+    inboundOrderDetail.value = await api.post(`/inbound/${encodeURIComponent(inboundOrderDetail.value.orderNo)}/cancel?operatorName=${encodeURIComponent(operator)}`)
+    showToast(locale.value === 'en' ? 'Inbound order cancelled' : '\u5165\u5e93\u8ba2\u5355\u5df2\u53d6\u6d88')
+    await loadInboundOrders()
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.inboundAction = false
+  }
+}
+async function generatePickList() {
+  await runOutboundAction('generate-pick-list', locale.value === 'en' ? 'Inventory allocated' : '\u5e93\u5b58\u5360\u7528\u6210\u529f')
+}
+async function assignOutboundPicking() {
+  await runOutboundAction('assign-picking', locale.value === 'en' ? 'Picking assigned' : '\u62e3\u8d27\u4efb\u52a1\u5df2\u5206\u914d')
+}
+async function runOutboundAction(action, successMessage) {
+  if (!outboundOrderDetail.value || loading.outboundAction) return
+  loading.outboundAction = true
+  try {
+    const operator = user.value?.displayName || user.value?.username || ''
+    outboundOrderDetail.value = await api.post(`/outbound-orders/${outboundOrderDetail.value.id}/${action}?operatorName=${encodeURIComponent(operator)}`)
+    initializePickingQuantities()
+    showToast(successMessage)
+    await Promise.all([loadOutboundOrders(), loadStocks()])
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.outboundAction = false
+  }
+}
+function searchPickingOrder() {
+  if (filteredPickingOrders.value.length === 1) enterPickingOrder(filteredPickingOrders.value[0])
+}
+async function enterPickingOrder(order) {
+  await openOutboundDetail(order.id)
+  if (outboundOrderDetail.value?.status === 'READY_TO_PICK') await startOutboundPicking()
+}
+function markItemPicked(item) {
+  pickingQuantities[item.itemId] = item.quantity
+}
+function pickingItemClass(item) {
+  const picked = Number(pickingQuantities[item.itemId] || 0)
+  if (picked >= Number(item.quantity)) return 'picked'
+  if (picked > 0) return 'partial'
+  return 'pending'
+}
+function pickingStatusName(item) {
+  const status = pickingItemClass(item)
+  if (locale.value === 'en') return { pending: 'Pending', partial: 'Partial', picked: 'Picked' }[status]
+  return { pending: '\u5f85\u62e3\u8d27', partial: '\u90e8\u5206\u62e3\u8d27', picked: '\u5df2\u62e3\u8d27' }[status]
+}
+async function startOutboundPicking() {
+  if (!outboundOrderDetail.value || loading.outboundAction) return
+  loading.outboundAction = true
+  try {
+    const operator = user.value?.displayName || user.value?.username || ''
+    outboundOrderDetail.value = await api.post(`/outbound-orders/${outboundOrderDetail.value.id}/picking/start?operatorName=${encodeURIComponent(operator)}`)
+    initializePickingQuantities()
+    showToast('\u5df2\u5f00\u59cb\u62e3\u8d27')
+    await loadOutboundOrders()
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.outboundAction = false
+  }
+}
+async function completeOutboundPicking() {
+  if (!outboundOrderDetail.value || loading.outboundAction) return
+  const invalid = outboundOrderDetail.value.items.some(item => Number(pickingQuantities[item.itemId]) !== Number(item.quantity))
+  if (invalid) return showToast('\u5b9e\u9645\u62e3\u8d27\u6570\u91cf\u5fc5\u987b\u4e0e\u5e94\u62e3\u6570\u91cf\u4e00\u81f4', 'error')
+  loading.outboundAction = true
+  try {
+    const operatorName = user.value?.displayName || user.value?.username || ''
+    outboundOrderDetail.value = await api.post(`/outbound-orders/${outboundOrderDetail.value.id}/picking/complete`, {
+      operatorName,
+      items: outboundOrderDetail.value.items.map(item => ({
+        itemId: item.itemId,
+        pickedQuantity: Number(pickingQuantities[item.itemId])
+      }))
+    })
+    showToast('\u62e3\u8d27\u5df2\u5b8c\u6210\uff0c\u53ef\u786e\u8ba4\u51fa\u5e93')
+    await loadOutboundOrders()
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.outboundAction = false
+  }
+}
 async function confirmOutboundOrder() {
   if (!outboundOrderDetail.value || loading.outboundAction) return
   loading.outboundAction = true
@@ -1311,7 +1605,8 @@ function formatTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
 }
 function historyName(type) {
-  return { CREATE: '\u521b\u5efa\u8ba2\u5355', INBOUND: '\u6536\u8d27\u5165\u5e93', OUTBOUND: '\u786e\u8ba4\u51fa\u5e93', COMPLETE: '\u5b8c\u6210\u8ba2\u5355', CANCEL: '\u53d6\u6d88\u8ba2\u5355' }[type] || type
+  if (locale.value === 'en') return { CREATE: 'Order Created', ALLOCATED: 'Inventory Allocated', ASSIGNED: 'Picking Assigned', PICKING: 'Picking Started', PICKED: 'Picking Completed', INBOUND: 'Received into Stock', OUTBOUND: 'Outbound Confirmed', COMPLETE: 'Order Completed', CANCEL: 'Order Cancelled' }[type] || type
+  return { CREATE: '\u521b\u5efa\u8ba2\u5355', PICKING: '\u5f00\u59cb\u62e3\u8d27', PICKED: '\u62e3\u8d27\u5b8c\u6210', INBOUND: '\u6536\u8d27\u5165\u5e93', OUTBOUND: '\u786e\u8ba4\u51fa\u5e93', COMPLETE: '\u5b8c\u6210\u8ba2\u5355', CANCEL: '\u53d6\u6d88\u8ba2\u5355' }[type] || type
 }
 function focusField(field) { nextTick(() => refs[field]?.value?.focus()) }
 function focusNext(field) {
@@ -1328,6 +1623,7 @@ function showToast(text, type = 'success') {
   if (type === 'success') navigator.vibrate?.(35)
 }
 function roleName(role) {
+  if (locale.value === 'en') return { SYSTEM_ADMIN: 'System Administrator', WAREHOUSE_MANAGER: 'Warehouse Manager', PURCHASING_OPERATIONS: 'Purchasing / Operations' }[role] || role
   return { SYSTEM_ADMIN: '\u7cfb\u7edf\u7ba1\u7406\u5458', WAREHOUSE_MANAGER: '\u4ed3\u5e93\u7ba1\u7406\u5458', PURCHASING_OPERATIONS: '\u91c7\u8d2d/\u8fd0\u8425\u4eba\u5458' }[role] || role
 }
 function locationStatus(l) {
@@ -1336,21 +1632,37 @@ function locationStatus(l) {
   return (l.occupied || 0) > 0 ? '\u4f7f\u7528\u4e2d' : '\u7a7a\u95f2'
 }
 function orderStatus(status) {
-  return { CREATED: '\u5f85\u5904\u7406', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
+  const map = locale.value === 'en'
+    ? { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', READY_TO_PICK: 'Ready to Pick', PICKING: 'Picking', PICKED: 'Picked', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }
+    : { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', READY_TO_PICK: 'Ready to Pick', PICKING: '\u62e3\u8d27\u4e2d', PICKED: '\u62e3\u8d27\u5b8c\u6210', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }
+  return map[status] || status
+}
+function outboundStatus(status) {
+  return orderStatus(status)
 }
 function directionName(direction) {
   return { INBOUND: labels.inbound, OUTBOUND: labels.outbound }[direction] || direction
 }
 function receiveStatusName(status) {
+  if (locale.value === 'en') return { NOT_RECEIVED: 'Not Received', PARTIAL: 'Partially Received', DONE: 'Done', OVER: 'Over Received' }[status] || status
   return { NOT_RECEIVED: '\u672a\u6536\u8d27', PARTIAL: '\u90e8\u5206\u6536\u8d27', DONE: '\u5df2\u5b8c\u6210', OVER: '\u8d85\u51fa' }[status] || status
 }
 function stockStatusName(status) {
+  if (locale.value === 'en') return { NORMAL: 'Normal', LOW: 'Low Stock', OVERSTOCK: 'Overstock' }[status] || status
   return { NORMAL: '\u6b63\u5e38', LOW: '\u5e93\u5b58\u4e0d\u8db3', OVERSTOCK: '\u5e93\u5b58\u79ef\u538b' }[status] || status
 }
 function movementName(type) {
+  if (locale.value === 'en') return { INBOUND: 'Inbound', OUTBOUND: 'Outbound', CHECK_GAIN: 'Check Gain', CHECK_LOSS: 'Check Loss' }[type] || type
   return { INBOUND: '\u5165\u5e93', OUTBOUND: '\u51fa\u5e93', CHECK_GAIN: '\u76d8\u76c8', CHECK_LOSS: '\u76d8\u4e8f' }[type] || type
 }
 function typeName(type) {
+  if (locale.value === 'en') {
+    return {
+      PURCHASE: 'Purchase Inbound', RETURN: 'Return Inbound', TRANSFER: 'Transfer',
+      INVENTORY_GAIN: 'Inventory Gain', SALE: 'Sales Outbound', REQUISITION: 'Requisition Outbound',
+      DAMAGE: 'Damage Outbound', INVENTORY_LOSS: 'Inventory Loss'
+    }[type] || type
+  }
   return {
     PURCHASE: '\u91c7\u8d2d\u5165\u5e93', RETURN: '\u9000\u8d27\u5165\u5e93', TRANSFER: '\u8c03\u62e8',
     INVENTORY_GAIN: '\u76d8\u76c8\u5165\u5e93', SALE: '\u9500\u552e\u51fa\u5e93', REQUISITION: '\u9886\u7528\u51fa\u5e93',
@@ -1359,6 +1671,7 @@ function typeName(type) {
 }
 
 onMounted(async () => {
+  switchLanguage()
   window.addEventListener('popstate', syncRoute)
   if (user.value) {
     await Promise.all([loadWarehouses(), loadProducts()])

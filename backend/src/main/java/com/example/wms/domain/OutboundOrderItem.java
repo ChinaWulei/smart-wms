@@ -18,6 +18,8 @@ public class OutboundOrderItem extends BaseEntity {
     @ManyToOne(optional = false)
     private StorageLocation location;
     private Integer quantity;
+    private Integer allocatedQuantity = 0;
+    private Integer pickedQuantity = 0;
 
     public OutboundOrder getOrder() { return order; }
     public void setOrder(OutboundOrder order) { this.order = order; }
@@ -29,4 +31,8 @@ public class OutboundOrderItem extends BaseEntity {
     public void setLocation(StorageLocation location) { this.location = location; }
     public Integer getQuantity() { return quantity; }
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
+    public Integer getAllocatedQuantity() { return allocatedQuantity; }
+    public void setAllocatedQuantity(Integer allocatedQuantity) { this.allocatedQuantity = allocatedQuantity; }
+    public Integer getPickedQuantity() { return pickedQuantity; }
+    public void setPickedQuantity(Integer pickedQuantity) { this.pickedQuantity = pickedQuantity; }
 }

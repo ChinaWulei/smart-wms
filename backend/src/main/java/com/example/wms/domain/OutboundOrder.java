@@ -20,7 +20,7 @@ public class OutboundOrder extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private OutboundType type;
     @Enumerated(EnumType.STRING)
-    private OrderStatus status = OrderStatus.CREATED;
+    private OrderStatus status = OrderStatus.IN_QUEUE;
     private String operatorName;
     private String receiverName;
     private String receiverPhone;
@@ -28,6 +28,14 @@ public class OutboundOrder extends BaseEntity {
     private String address;
     private String reason;
     private String trackingNo;
+    private LocalDateTime allocatedAt;
+    private String allocatedBy;
+    private LocalDateTime assignedAt;
+    private String assignedBy;
+    private LocalDateTime pickingStartedAt;
+    private String pickingStartedBy;
+    private LocalDateTime pickedAt;
+    private String pickedBy;
     private LocalDateTime completedAt;
     private String completedBy;
     private LocalDateTime cancelledAt;
@@ -54,6 +62,22 @@ public class OutboundOrder extends BaseEntity {
     public void setReason(String reason) { this.reason = reason; }
     public String getTrackingNo() { return trackingNo; }
     public void setTrackingNo(String trackingNo) { this.trackingNo = trackingNo; }
+    public LocalDateTime getAllocatedAt() { return allocatedAt; }
+    public void setAllocatedAt(LocalDateTime allocatedAt) { this.allocatedAt = allocatedAt; }
+    public String getAllocatedBy() { return allocatedBy; }
+    public void setAllocatedBy(String allocatedBy) { this.allocatedBy = allocatedBy; }
+    public LocalDateTime getAssignedAt() { return assignedAt; }
+    public void setAssignedAt(LocalDateTime assignedAt) { this.assignedAt = assignedAt; }
+    public String getAssignedBy() { return assignedBy; }
+    public void setAssignedBy(String assignedBy) { this.assignedBy = assignedBy; }
+    public LocalDateTime getPickingStartedAt() { return pickingStartedAt; }
+    public void setPickingStartedAt(LocalDateTime pickingStartedAt) { this.pickingStartedAt = pickingStartedAt; }
+    public String getPickingStartedBy() { return pickingStartedBy; }
+    public void setPickingStartedBy(String pickingStartedBy) { this.pickingStartedBy = pickingStartedBy; }
+    public LocalDateTime getPickedAt() { return pickedAt; }
+    public void setPickedAt(LocalDateTime pickedAt) { this.pickedAt = pickedAt; }
+    public String getPickedBy() { return pickedBy; }
+    public void setPickedBy(String pickedBy) { this.pickedBy = pickedBy; }
     public LocalDateTime getCompletedAt() { return completedAt; }
     public void setCompletedAt(LocalDateTime completedAt) { this.completedAt = completedAt; }
     public String getCompletedBy() { return completedBy; }

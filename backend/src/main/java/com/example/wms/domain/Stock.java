@@ -15,6 +15,7 @@ public class Stock extends BaseEntity {
     @ManyToOne(optional = false)
     private StorageLocation location;
     private Integer quantity = 0;
+    private Integer allocatedQuantity = 0;
 
     public Product getProduct() { return product; }
     public void setProduct(Product product) { this.product = product; }
@@ -24,4 +25,6 @@ public class Stock extends BaseEntity {
     public void setLocation(StorageLocation location) { this.location = location; }
     public Integer getQuantity() { return quantity; }
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
+    public Integer getAllocatedQuantity() { return allocatedQuantity; }
+    public void setAllocatedQuantity(Integer allocatedQuantity) { this.allocatedQuantity = allocatedQuantity; }
 }
