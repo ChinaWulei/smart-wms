@@ -24,7 +24,8 @@ public class ProductService {
 
     public List<Product> search(String keyword, String category) {
         if (StringUtils.hasText(keyword)) {
-            return productRepository.findByNameContainingIgnoreCaseOrSkuContainingIgnoreCase(keyword, keyword);
+            return productRepository.findByNameContainingIgnoreCaseOrSkuContainingIgnoreCaseOrBarcodeContainingIgnoreCase(
+                    keyword, keyword, keyword);
         }
         if (StringUtils.hasText(category)) {
             return productRepository.findByCategory(category);

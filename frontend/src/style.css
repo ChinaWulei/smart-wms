@@ -46,7 +46,14 @@ h1, h2, h3, p { margin: 0; }
 .order-lines-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 20px; }
 .order-lines-head h3 { font-size: 16px; }
 .order-lines { display: grid; gap: 10px; margin-top: 10px; }
-.order-line { display: grid; grid-template-columns: 1.4fr 1fr 1.2fr .55fr auto; align-items: end; gap: 8px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; }
+.order-line { display: grid; grid-template-columns: 1.6fr 1fr 1.2fr .55fr auto; align-items: end; gap: 8px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; }
+.product-picker { position: relative; display: grid; gap: 5px; }
+.product-options { position: absolute; top: calc(100% - 1px); left: 0; right: 0; z-index: 8; max-height: 250px; overflow-y: auto; padding: 5px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; box-shadow: 0 12px 24px rgba(15, 23, 42, .14); }
+.product-options button { width: 100%; min-height: 0; display: grid; gap: 3px; padding: 9px; border: 0; text-align: left; }
+.product-options button:hover { background: #eef6fc; }
+.product-options span, .product-options p, .selected-product { color: #667085; font-size: 12px; }
+.product-options p { padding: 10px; }
+.selected-product { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; max-height: 260px; overflow: auto; }
 .code-list b { width: 100%; }
 .code-list span { background: #f0f8f5; border: 1px solid #cfe5da; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
@@ -107,6 +114,41 @@ label.disabled { opacity: .78; }
 .receive-card.done span { background: #d9f5e6; color: #16653f; }
 .receive-card.over { border-color: #d92d20; background: #fff5f5; }
 .receive-card.over span { background: #ffe0df; color: #b42318; }
+.distribution-panel { max-width: 1180px; margin: 0 auto; overflow: hidden; }
+.distribution-head { align-items: flex-start; }
+.distribution-toolbar { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; align-items: end; gap: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+.distribution-toolbar input[type="range"] { padding: 0; box-shadow: none; }
+.distribution-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 14px 0; color: #667085; font-size: 12px; }
+.distribution-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.distribution-legend i { width: 12px; height: 12px; border-radius: 3px; background: #cbd5e1; }
+.distribution-legend i.occupied { background: #2e9d62; }
+.distribution-legend i.full { background: #f0a020; }
+.distribution-legend i.disabled { background: #98a2b3; }
+.warehouse-3d { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.shelf-3d-card { min-width: 0; border: 1px solid #dbe4ee; border-radius: 10px; background: linear-gradient(180deg, #f8fbfe, #eef3f8); overflow: hidden; }
+.shelf-3d-card > header { display: flex; justify-content: space-between; gap: 10px; padding: 12px 14px; background: rgba(255,255,255,.72); border-bottom: 1px solid #dbe4ee; }
+.shelf-3d-card header div { display: grid; gap: 3px; }
+.shelf-3d-card header span, .shelf-3d-card header strong { color: #667085; font-size: 12px; }
+.scene-viewport { min-height: 330px; overflow: auto; display: grid; place-items: center; padding: 70px 50px 35px; perspective: 1000px; }
+.scene-3d { position: relative; transform-style: preserve-3d; transform-origin: center; transition: transform .2s ease; }
+.scene-3d::after { content: ""; position: absolute; left: -22px; right: -22px; bottom: -34px; height: 14px; border-radius: 50%; background: rgba(15, 23, 42, .16); filter: blur(8px); transform: translateZ(-40px); }
+.location-cube { position: absolute; left: 0; bottom: 0; width: 64px; height: 46px; min-height: 0; display: grid; place-items: center; gap: 1px; padding: 4px; border: 1px solid rgba(15, 23, 42, .2); border-radius: 3px; color: #344054; background: #dce3ea; transform-style: preserve-3d; box-shadow: 8px 8px 0 #aeb8c3, 8px 8px 14px rgba(15,23,42,.18); transition: filter .15s, outline .15s; }
+.location-cube:hover { filter: brightness(1.08); z-index: 5; }
+.location-cube.selected { outline: 3px solid #1769aa; outline-offset: 3px; z-index: 6; }
+.location-cube span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
+.location-cube b { font-size: 14px; }
+.location-cube.occupied { color: #fff; background: #2e9d62; box-shadow: 8px 8px 0 #1c7043, 8px 8px 14px rgba(15,23,42,.2); }
+.location-cube.full { color: #fff; background: #f0a020; box-shadow: 8px 8px 0 #b66e00, 8px 8px 14px rgba(15,23,42,.2); }
+.location-cube.disabled { color: #fff; background: #98a2b3; box-shadow: 8px 8px 0 #667085, 8px 8px 14px rgba(15,23,42,.2); }
+.location-inspector { margin-top: 14px; padding: 14px; border: 1px solid #b8d6ed; border-radius: 10px; background: #f4f9fd; }
+.location-inspector .panel-head { margin-bottom: 10px; }
+.inspector-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.inspector-metrics div { display: grid; gap: 4px; padding: 10px; border-radius: 8px; background: #fff; }
+.inspector-metrics span { color: #667085; font-size: 12px; }
+.inspector-metrics b { font-size: 20px; }
+.inspector-products { display: grid; gap: 7px; margin-top: 10px; }
+.inspector-products article { display: flex; justify-content: space-between; gap: 10px; padding: 9px 10px; border-radius: 8px; background: #fff; font-size: 13px; }
+.inspector-products span, .inspector-products p { color: #667085; }
 .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: calc(100vw - 28px); padding: 11px 14px; border-radius: 8px; color: #fff; background: #1f7a4d; box-shadow: 0 10px 24px rgba(15, 23, 42, .18); z-index: 10; }
 .toast.error { background: #c2410c; }
 @media (max-width: 800px) {
@@ -117,6 +159,8 @@ label.disabled { opacity: .78; }
   .form-grid, .filters, .cards, .scan-result, .detail-grid, .order-search-form { grid-template-columns: 1fr; }
   .order-main-fields .remark-field { grid-column: auto; }
   .order-line { grid-template-columns: 1fr; }
+  .distribution-toolbar, .warehouse-3d, .inspector-metrics { grid-template-columns: 1fr; }
+  .scene-viewport { min-height: 280px; padding-inline: 25px; }
   .head-actions { flex-wrap: wrap; justify-content: flex-end; }
   .order-info { grid-template-columns: 1fr; }
   .top { align-items: stretch; }

@@ -9,6 +9,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     boolean existsBySku(String sku);
     Optional<Product> findBySku(String sku);
     Optional<Product> findByBarcode(String barcode);
-    List<Product> findByNameContainingIgnoreCaseOrSkuContainingIgnoreCase(String name, String sku);
+    List<Product> findByNameContainingIgnoreCaseOrSkuContainingIgnoreCaseOrBarcodeContainingIgnoreCase(
+            String name, String sku, String barcode);
     List<Product> findByCategory(String category);
 }
