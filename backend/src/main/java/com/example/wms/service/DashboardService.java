@@ -29,27 +29,39 @@ public class DashboardService {
         this.alertRepository = alertRepository;
     }
 
-    public Map<String, Object> dashboard() {
+    public Map<String, Object> dashboard(Long warehouseId) {
         LocalDateTime today = LocalDate.now().atStartOfDay();
         LocalDateTime thirtyDaysAgo = LocalDate.now().minusDays(30).atStartOfDay();
+        List<Stock> warehouseStocks = stockRepository.findAll().stream()
+                .filter(stock -> warehouseId == null || stock.getWarehouse().getId().equals(warehouseId))
+                .toList();
+        var warehouseMovements = movementRepository.findTop200ByOrderByMovementTimeDesc().stream()
+                .filter(movement -> warehouseId == null || movement.getWarehouse().getId().equals(warehouseId))
+                .toList();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("productTotal", productRepository.count());
-        data.put("stockTotal", stockRepository.totalQuantity());
-        data.put("todayInbound", movementRepository.todayInbound(today));
-        data.put("todayOutbound", movementRepository.todayOutbound(today));
+        data.put("stockTotal", warehouseStocks.stream().mapToInt(Stock::getQuantity).sum());
+        data.put("todayInbound", warehouseMovements.stream()
+                .filter(movement -> movement.getMovementTime() != null && !movement.getMovementTime().isBefore(today))
+                .filter(movement -> movement.getType().name().equals("INBOUND"))
+                .mapToInt(movement -> movement.getQuantity() == null ? 0 : movement.getQuantity()).sum());
+        data.put("todayOutbound", warehouseMovements.stream()
+                .filter(movement -> movement.getMovementTime() != null && !movement.getMovementTime().isBefore(today))
+                .filter(movement -> movement.getType().name().equals("OUTBOUND"))
+                .mapToInt(movement -> movement.getQuantity() == null ? 0 : movement.getQuantity()).sum());
         data.put("warningCount", alertRepository.countByStatusNot(AlertStatus.RESOLVED));
         data.put("topOutboundProducts", movementRepository.topOutbound(thirtyDaysAgo).stream().limit(8)
                 .map(row -> Map.of("name", row[0], "quantity", row[1])).toList());
         data.put("stockTrend", movementRepository.trend(thirtyDaysAgo).stream()
                 .map(row -> Map.of("date", String.valueOf(row[0]), "inbound", row[1], "outbound", row[2])).toList());
-        data.put("warehouseShare", stockRepository.findAll().stream()
+        data.put("warehouseShare", warehouseStocks.stream()
                 .collect(Collectors.groupingBy(s -> s.getWarehouse().getName(), Collectors.summingInt(Stock::getQuantity)))
                 .entrySet().stream().map(e -> Map.of("warehouse", e.getKey(), "quantity", e.getValue())).toList());
         return data;
     }
 
     public Map<String, Object> structuredAiData() {
-        Map<String, Object> data = dashboard();
+        Map<String, Object> data = dashboard(null);
         data.put("stocks", stockRepository.findAll().stream().map(s -> Map.of(
                 "sku", s.getProduct().getSku(),
                 "productName", s.getProduct().getName(),

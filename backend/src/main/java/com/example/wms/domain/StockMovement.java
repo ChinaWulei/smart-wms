@@ -24,6 +24,7 @@ public class StockMovement extends BaseEntity {
     private Integer afterQuantity;
     private String sourceNo;
     private String operatorName;
+    private String remark;
     private LocalDateTime movementTime = LocalDateTime.now();
 
     public Product getProduct() { return product; }
@@ -44,6 +45,8 @@ public class StockMovement extends BaseEntity {
     public void setSourceNo(String sourceNo) { this.sourceNo = sourceNo; }
     public String getOperatorName() { return operatorName; }
     public void setOperatorName(String operatorName) { this.operatorName = operatorName; }
+    public String getRemark() { return remark; }
+    public void setRemark(String remark) { this.remark = remark; }
     public LocalDateTime getMovementTime() { return movementTime; }
     public void setMovementTime(LocalDateTime movementTime) { this.movementTime = movementTime; }
 }

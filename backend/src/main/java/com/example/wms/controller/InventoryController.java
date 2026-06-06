@@ -7,6 +7,7 @@ import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
+import com.example.wms.dto.WmsDtos.OutboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
 import com.example.wms.dto.WmsDtos.ScanProductView;
@@ -24,6 +25,7 @@ import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -47,7 +49,9 @@ public class InventoryController {
     public ApiResponse<OrderSummaryView> inbound(@Valid @RequestBody InboundRequest request) { return ApiResponse.ok(inventoryService.inbound(request)); }
 
     @GetMapping("/inbound")
-    public ApiResponse<List<OrderSummaryView>> inboundOrders() { return ApiResponse.ok(inventoryService.inboundOrders()); }
+    public ApiResponse<List<OrderSummaryView>> inboundOrders(@RequestParam(required = false) Long warehouseId) {
+        return ApiResponse.ok(inventoryService.inboundOrders(warehouseId));
+    }
 
     @GetMapping("/inbound/{orderNo}")
     public ApiResponse<InboundOrderDetailView> inboundOrder(@org.springframework.web.bind.annotation.PathVariable String orderNo) {
@@ -78,7 +82,36 @@ public class InventoryController {
     public ApiResponse<OrderSummaryView> outbound(@Valid @RequestBody OutboundRequest request) { return ApiResponse.ok(inventoryService.outbound(request)); }
 
     @GetMapping("/outbound")
-    public ApiResponse<List<OrderSummaryView>> outboundOrders() { return ApiResponse.ok(inventoryService.outboundOrders()); }
+    public ApiResponse<List<OrderSummaryView>> outboundOrders(@RequestParam(required = false) Long warehouseId) {
+        return ApiResponse.ok(inventoryService.outboundOrders(warehouseId));
+    }
+
+    @PostMapping("/outbound-orders")
+    public ApiResponse<OrderSummaryView> createOutboundOrder(@Valid @RequestBody OutboundRequest request) {
+        return ApiResponse.ok(inventoryService.outbound(request));
+    }
+
+    @GetMapping("/outbound-orders")
+    public ApiResponse<List<OrderSummaryView>> outboundOrderList(@RequestParam(required = false) Long warehouseId) {
+        return ApiResponse.ok(inventoryService.outboundOrders(warehouseId));
+    }
+
+    @GetMapping("/outbound-orders/{id}")
+    public ApiResponse<OutboundOrderDetailView> outboundOrderDetail(@PathVariable Long id) {
+        return ApiResponse.ok(inventoryService.getOutboundOrder(id));
+    }
+
+    @PostMapping("/outbound-orders/{id}/confirm")
+    public ApiResponse<OutboundOrderDetailView> confirmOutboundOrder(
+            @PathVariable Long id, @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.confirmOutbound(id, operatorName));
+    }
+
+    @PostMapping("/outbound-orders/{id}/cancel")
+    public ApiResponse<OutboundOrderDetailView> cancelOutboundOrder(
+            @PathVariable Long id, @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.cancelOutbound(id, operatorName));
+    }
 
     @GetMapping("/orders/search")
     public ApiResponse<List<OrderSearchView>> searchOrders(
@@ -87,9 +120,10 @@ public class InventoryController {
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate createdFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate createdTo,
-            @RequestParam(required = false) String operatorName) {
+            @RequestParam(required = false) String operatorName,
+            @RequestParam(required = false) Long warehouseId) {
         return ApiResponse.ok(inventoryService.searchOrders(
-                orderNo, direction, status, createdFrom, createdTo, operatorName));
+                orderNo, direction, status, createdFrom, createdTo, operatorName, warehouseId));
     }
 
     @PostMapping("/inventory-checks")
@@ -106,5 +140,9 @@ public class InventoryController {
     }
 
     @GetMapping("/movements")
-    public ApiResponse<List<StockMovement>> movements() { return ApiResponse.ok(movementRepository.findTop200ByOrderByMovementTimeDesc()); }
+    public ApiResponse<List<StockMovement>> movements(@RequestParam(required = false) Long warehouseId) {
+        return ApiResponse.ok(movementRepository.findTop200ByOrderByMovementTimeDesc().stream()
+                .filter(movement -> warehouseId == null || movement.getWarehouse().getId().equals(warehouseId))
+                .toList());
+    }
 }

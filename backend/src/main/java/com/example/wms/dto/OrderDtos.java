@@ -4,6 +4,7 @@ import com.example.wms.domain.enums.InboundType;
 import com.example.wms.domain.enums.OutboundType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
@@ -26,6 +27,11 @@ public class OrderDtos {
     public record OutboundRequest(
             @NotNull OutboundType type,
             String operatorName,
+            @NotBlank String receiverName,
+            String receiverPhone,
+            @NotBlank String address,
+            @NotBlank String reason,
+            String trackingNo,
             String remark,
             @NotEmpty @Valid List<LineItem> items
     ) {}

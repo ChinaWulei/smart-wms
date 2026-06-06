@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   after_quantity INT,
   source_no VARCHAR(255),
   operator_name VARCHAR(255),
+  remark VARCHAR(255),
   movement_time DATETIME,
   created_at DATETIME,
   updated_at DATETIME,
@@ -124,7 +125,25 @@ CREATE TABLE IF NOT EXISTS inbound_order_items (
   CONSTRAINT fk_in_item_location FOREIGN KEY (location_id) REFERENCES storage_locations(id)
 );
 
-CREATE TABLE IF NOT EXISTS outbound_orders LIKE inbound_orders;
+CREATE TABLE IF NOT EXISTS outbound_orders (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  order_no VARCHAR(255),
+  type VARCHAR(32),
+  status VARCHAR(32),
+  operator_name VARCHAR(255),
+  receiver_name VARCHAR(255),
+  receiver_phone VARCHAR(255),
+  address VARCHAR(500),
+  reason VARCHAR(255),
+  tracking_no VARCHAR(255),
+  completed_at DATETIME,
+  completed_by VARCHAR(255),
+  cancelled_at DATETIME,
+  cancelled_by VARCHAR(255),
+  remark VARCHAR(255),
+  created_at DATETIME,
+  updated_at DATETIME
+);
 
 CREATE TABLE IF NOT EXISTS outbound_order_items (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

@@ -18,11 +18,24 @@ h1, h2, h3, p { margin: 0; }
 .login-card { width: min(420px, 100%); display: grid; gap: 14px; background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 24px; box-shadow: 0 12px 30px rgba(15, 23, 42, .08); }
 .login-card h1 { font-size: 26px; }
 .login-card p, .hint { color: #667085; }
+.warehouse-select-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: linear-gradient(135deg, #eef7f2, #edf3f8); }
+.warehouse-select-card { width: min(900px, 100%); padding: 24px; border: 1px solid #d9e2ec; border-radius: 12px; background: #fff; box-shadow: 0 16px 40px rgba(15, 23, 42, .1); }
+.warehouse-select-card > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.warehouse-select-card header div { display: grid; gap: 6px; }
+.warehouse-select-card header span, .warehouse-select-card header p { color: #667085; }
+.warehouse-choice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }
+.warehouse-choice-grid button { height: 170px; display: grid; place-items: center; align-content: center; gap: 9px; border-color: #d7e2ec; background: linear-gradient(160deg, #fff, #f4f8fb); }
+.warehouse-choice-grid button:hover { border-color: #1769aa; box-shadow: 0 10px 24px rgba(23, 105, 170, .13); transform: translateY(-2px); }
+.warehouse-choice-grid i { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 12px; background: #1769aa; color: #fff; font-style: normal; font-weight: 800; }
+.warehouse-choice-grid b { font-size: 22px; letter-spacing: 2px; }
+.warehouse-choice-grid span { color: #667085; font-size: 13px; }
 .wide { width: 100%; }
 .workspace { max-width: 1180px; margin: 0 auto; padding: 12px; }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
 .top div { display: grid; gap: 3px; }
 .top .top-actions { display: flex; gap: 8px; }
+.warehouse-switcher { min-width: 150px; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.warehouse-switcher select { min-height: 40px; padding-block: 5px; }
 .top strong { font-size: 18px; }
 .top span { color: #667085; font-size: 13px; }
 .overview { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px 0; }
@@ -43,6 +56,8 @@ h1, h2, h3, p { margin: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .order-create-panel { max-width: 1000px; margin: 0 auto; }
 .order-main-fields .remark-field { grid-column: span 2; }
+.outbound-recipient-fields { margin-top: 12px; padding: 12px; border: 1px solid #dbe4ee; border-radius: 8px; background: #f8fafc; }
+.outbound-recipient-fields .address-field { grid-column: span 2; }
 .order-lines-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 20px; }
 .order-lines-head h3 { font-size: 16px; }
 .order-lines { display: grid; gap: 10px; margin-top: 10px; }
@@ -84,6 +99,9 @@ h1, h2, h3, p { margin: 0; }
 .table-empty { height: 110px; text-align: center !important; color: #98a2b3; }
 .order-detail-panel { max-width: 1120px; margin: 0 auto; }
 .detail-grid { display: grid; grid-template-columns: .9fr 1.25fr 1fr; gap: 12px; }
+.outbound-detail-grid { display: grid; grid-template-columns: .9fr .9fr 1.25fr; gap: 12px; }
+.outbound-history-column { grid-column: 1 / -1; }
+.outbound-history-column .history-item { grid-template-columns: 1fr 1fr 1fr 2fr; align-items: center; }
 .detail-column { display: grid; align-content: start; gap: 10px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #f8fafc; }
 .detail-column h3 { font-size: 16px; }
 .detail-kv, .detail-item, .history-item { display: grid; gap: 5px; border: 1px solid #edf2f7; border-radius: 8px; padding: 9px; background: #fff; }
@@ -153,16 +171,21 @@ label.disabled { opacity: .78; }
 .toast.error { background: #c2410c; }
 @media (max-width: 800px) {
   .workspace { padding: 10px; }
+  .warehouse-choice-grid { grid-template-columns: 1fr; }
   .overview { grid-template-columns: repeat(2, 1fr); }
   .module-grid { grid-template-columns: repeat(2, 1fr); }
   .submodule-panel { grid-template-columns: repeat(2, 1fr); }
-  .form-grid, .filters, .cards, .scan-result, .detail-grid, .order-search-form { grid-template-columns: 1fr; }
+  .form-grid, .filters, .cards, .scan-result, .detail-grid, .outbound-detail-grid, .order-search-form { grid-template-columns: 1fr; }
   .order-main-fields .remark-field { grid-column: auto; }
+  .outbound-recipient-fields .address-field, .outbound-history-column { grid-column: auto; }
+  .outbound-history-column .history-item { grid-template-columns: 1fr; }
   .order-line { grid-template-columns: 1fr; }
   .distribution-toolbar, .warehouse-3d, .inspector-metrics { grid-template-columns: 1fr; }
   .scene-viewport { min-height: 280px; padding-inline: 25px; }
   .head-actions { flex-wrap: wrap; justify-content: flex-end; }
   .order-info { grid-template-columns: 1fr; }
   .top { align-items: stretch; }
+  .top .top-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .warehouse-switcher { grid-column: 1 / -1; }
   .top button { width: 92px; }
 }

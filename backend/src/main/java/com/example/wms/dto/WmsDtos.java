@@ -32,6 +32,16 @@ public class WmsDtos {
     public record OrderSearchView(Long id, String orderNo, String direction, String type, OrderStatus status,
                                   String operatorName, String remark, Integer itemCount, LocalDateTime createdAt,
                                   LocalDateTime completedAt) {}
+    public record OutboundItemView(Long itemId, Long productId, String sku, String barcode, String productName,
+                                   String modelSpec, String unitName, Integer quantity, Long warehouseId,
+                                   String warehouseName, Long locationId, String locationCode,
+                                   Integer availableQuantity) {}
+    public record OutboundOrderDetailView(Long id, String orderNo, String type, OrderStatus status,
+                                          String operatorName, String receiverName, String receiverPhone,
+                                          String address, String reason, String trackingNo, String remark,
+                                          LocalDateTime createdAt, LocalDateTime completedAt,
+                                          LocalDateTime cancelledAt, Integer totalQuantity,
+                                          List<OutboundItemView> items, List<OrderHistoryView> histories) {}
     public record ScanLocationView(String code, String warehouseName, String shelfCode, LocationStatus status,
                                    Integer capacity, Integer occupied) {}
     public record ScanProductView(String sku, String barcode, String productName, String modelSpec, String unitName,

@@ -30,6 +30,8 @@ import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderHistoryView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
+import com.example.wms.dto.WmsDtos.OutboundItemView;
+import com.example.wms.dto.WmsDtos.OutboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
 import com.example.wms.dto.WmsDtos.ScanProductView;
@@ -46,7 +48,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
@@ -113,6 +117,11 @@ public class InventoryService {
         order.setOrderNo("OUT" + DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS").format(LocalDateTime.now()));
         order.setType(request.type());
         order.setOperatorName(request.operatorName());
+        order.setReceiverName(request.receiverName());
+        order.setReceiverPhone(request.receiverPhone());
+        order.setAddress(request.address());
+        order.setReason(request.reason());
+        order.setTrackingNo(request.trackingNo());
         order.setRemark(request.remark());
         for (LineItem line : request.items()) {
             Product product = product(line.productId());
@@ -132,23 +141,86 @@ public class InventoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<OrderSummaryView> inboundOrders() {
-        return inboundOrderRepository.findAll().stream().map(this::inboundSummary).toList();
+    public List<OrderSummaryView> inboundOrders(Long warehouseId) {
+        return inboundOrderRepository.findAll().stream()
+                .filter(order -> warehouseId == null || order.getItems().stream()
+                        .anyMatch(item -> item.getWarehouse().getId().equals(warehouseId)))
+                .map(this::inboundSummary).toList();
     }
 
     @Transactional(readOnly = true)
-    public List<OrderSummaryView> outboundOrders() {
-        return outboundOrderRepository.findAll().stream().map(this::outboundSummary).toList();
+    public List<OrderSummaryView> outboundOrders(Long warehouseId) {
+        return outboundOrderRepository.findAll().stream()
+                .filter(order -> warehouseId == null || order.getItems().stream()
+                        .anyMatch(item -> item.getWarehouse().getId().equals(warehouseId)))
+                .map(this::outboundSummary).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public OutboundOrderDetailView getOutboundOrder(Long id) {
+        return outboundDetail(outboundOrderRepository.findById(id)
+                .orElseThrow(() -> new BizException("出库单不存在")));
+    }
+
+    @Transactional
+    public OutboundOrderDetailView confirmOutbound(Long id, String operatorName) {
+        OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("出库单不存在"));
+        if (order.getStatus() != OrderStatus.CREATED) {
+            throw new BizException(order.getStatus() == OrderStatus.COMPLETED
+                    ? "出库单已完成，不能重复确认" : "出库单已取消，不能确认");
+        }
+        Map<OutboundStockKey, Integer> requiredByStock = new LinkedHashMap<>();
+        order.getItems().stream()
+                .sorted(Comparator.comparing((OutboundOrderItem item) -> item.getProduct().getId())
+                        .thenComparing(item -> item.getLocation().getId()))
+                .forEach(item -> requiredByStock.merge(new OutboundStockKey(
+                        item.getProduct().getId(), item.getWarehouse().getId(), item.getLocation().getId()),
+                        n(item.getQuantity()), Integer::sum));
+        for (Map.Entry<OutboundStockKey, Integer> entry : requiredByStock.entrySet()) {
+            OutboundStockKey key = entry.getKey();
+            Stock stock = stockRepository.findForUpdate(key.productId(), key.warehouseId(), key.locationId()).orElse(null);
+            if (stock == null || n(stock.getQuantity()) < entry.getValue()) {
+                throw new BizException("当前库存不足，无法出库");
+            }
+        }
+        for (OutboundOrderItem item : order.getItems()) {
+            adjustStock(item.getProduct(), item.getWarehouse(), item.getLocation(), -n(item.getQuantity()),
+                    MovementType.OUTBOUND, order.getOrderNo(), operatorName);
+        }
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(LocalDateTime.now());
+        order.setCompletedBy(operatorName);
+        return outboundDetail(outboundOrderRepository.save(order));
+    }
+
+    @Transactional
+    public OutboundOrderDetailView cancelOutbound(Long id, String operatorName) {
+        OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new BizException("出库单不存在"));
+        if (order.getStatus() == OrderStatus.COMPLETED) throw new BizException("已完成的出库单不能取消");
+        if (order.getStatus() == OrderStatus.CANCELLED) throw new BizException("出库单已取消");
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setCancelledAt(LocalDateTime.now());
+        order.setCancelledBy(operatorName);
+        return outboundDetail(outboundOrderRepository.save(order));
     }
 
     @Transactional(readOnly = true)
     public List<OrderSearchView> searchOrders(String orderNo, String direction, OrderStatus status,
-                                              LocalDate createdFrom, LocalDate createdTo, String operatorName) {
+                                              LocalDate createdFrom, LocalDate createdTo, String operatorName,
+                                              Long warehouseId) {
         LocalDateTime from = createdFrom == null ? null : createdFrom.atStartOfDay();
         LocalDateTime to = createdTo == null ? null : createdTo.plusDays(1).atStartOfDay();
         Stream<OrderSearchView> orders = Stream.concat(
-                inboundOrderRepository.findAll().stream().map(this::inboundSearchView),
-                outboundOrderRepository.findAll().stream().map(this::outboundSearchView));
+                inboundOrderRepository.findAll().stream()
+                        .filter(order -> warehouseId == null || order.getItems().stream()
+                                .anyMatch(item -> item.getWarehouse().getId().equals(warehouseId)))
+                        .map(this::inboundSearchView),
+                outboundOrderRepository.findAll().stream()
+                        .filter(order -> warehouseId == null || order.getItems().stream()
+                                .anyMatch(item -> item.getWarehouse().getId().equals(warehouseId)))
+                        .map(this::outboundSearchView));
         return orders
                 .filter(order -> blank(direction) || order.direction().equalsIgnoreCase(direction))
                 .filter(order -> blank(orderNo) || containsIgnoreCase(order.orderNo(), orderNo))
@@ -320,6 +392,8 @@ public class InventoryService {
         movement.setAfterQuantity(after);
         movement.setSourceNo(sourceNo);
         movement.setOperatorName(operator);
+        movement.setRemark(type == MovementType.INBOUND ? "收货入库"
+                : type == MovementType.OUTBOUND ? "确认出库" : "库存调整");
         movement.setMovementTime(LocalDateTime.now());
         return movement;
     }
@@ -429,6 +503,36 @@ public class InventoryService {
                 order.getOperatorName(), order.getRemark(), order.getItems().size());
     }
 
+    private OutboundOrderDetailView outboundDetail(OutboundOrder order) {
+        List<OutboundItemView> items = order.getItems().stream().map(item -> {
+            Product product = item.getProduct();
+            int available = stockRepository.findByProductIdAndWarehouseIdAndLocationId(
+                    product.getId(), item.getWarehouse().getId(), item.getLocation().getId())
+                    .map(Stock::getQuantity).orElse(0);
+            return new OutboundItemView(item.getId(), product.getId(), product.getSku(), product.getBarcode(),
+                    product.getName(), product.getModelSpec(), product.getUnitName(), item.getQuantity(),
+                    item.getWarehouse().getId(), item.getWarehouse().getName(), item.getLocation().getId(),
+                    item.getLocation().getCode(), available);
+        }).toList();
+        List<OrderHistoryView> histories = new java.util.ArrayList<>();
+        histories.add(new OrderHistoryView(order.getCreatedAt(), "CREATE", order.getOperatorName(), "创建出库订单"));
+        movementRepository.findBySourceNoOrderByMovementTimeDesc(order.getOrderNo()).forEach(movement ->
+                histories.add(new OrderHistoryView(movement.getMovementTime(), movement.getType().name(),
+                        movement.getOperatorName(), movement.getProduct().getSku() + " / "
+                        + movement.getLocation().getCode() + " / " + movement.getQuantity())));
+        if (order.getCompletedAt() != null) {
+            histories.add(new OrderHistoryView(order.getCompletedAt(), "COMPLETE", order.getCompletedBy(), "出库订单完成"));
+        }
+        if (order.getCancelledAt() != null) {
+            histories.add(new OrderHistoryView(order.getCancelledAt(), "CANCEL", order.getCancelledBy(), "取消出库订单"));
+        }
+        return new OutboundOrderDetailView(order.getId(), order.getOrderNo(), order.getType().name(),
+                order.getStatus(), order.getOperatorName(), order.getReceiverName(), order.getReceiverPhone(),
+                order.getAddress(), order.getReason(), order.getTrackingNo(), order.getRemark(),
+                order.getCreatedAt(), order.getCompletedAt(), order.getCancelledAt(),
+                items.stream().mapToInt(item -> n(item.quantity())).sum(), items, histories);
+    }
+
     private OrderSearchView inboundSearchView(InboundOrder order) {
         return new OrderSearchView(order.getId(), order.getOrderNo(), "INBOUND", order.getType().name(),
                 order.getStatus(), order.getOperatorName(), order.getRemark(), order.getItems().size(),
@@ -459,6 +563,8 @@ public class InventoryService {
     private int n(Integer value) {
         return value == null ? 0 : value;
     }
+
+    private record OutboundStockKey(Long productId, Long warehouseId, Long locationId) {}
 
     private Warehouse warehouse(Long id) {
         return warehouseRepository.findById(id).orElseThrow(() -> new BizException("仓库不存在"));

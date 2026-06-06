@@ -5,6 +5,7 @@ import com.example.wms.service.DashboardService;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -17,7 +18,7 @@ public class DashboardController {
     }
 
     @GetMapping
-    public ApiResponse<Map<String, Object>> dashboard() {
-        return ApiResponse.ok(dashboardService.dashboard());
+    public ApiResponse<Map<String, Object>> dashboard(@RequestParam(required = false) Long warehouseId) {
+        return ApiResponse.ok(dashboardService.dashboard(warehouseId));
     }
 }

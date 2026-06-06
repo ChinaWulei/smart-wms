@@ -44,7 +44,12 @@ public class WarehouseController {
     }
 
     @GetMapping("/warehouses")
-    public ApiResponse<List<Warehouse>> warehouses() { return ApiResponse.ok(warehouseRepository.findAll()); }
+    public ApiResponse<List<Warehouse>> warehouses() {
+        return ApiResponse.ok(warehouseRepository.findAll().stream()
+                .filter(warehouse -> warehouse.getCode() != null && warehouse.getCode().matches("[A-Z]{5}"))
+                .peek(warehouse -> warehouse.setName(warehouse.getCode()))
+                .toList());
+    }
 
     @PostMapping("/warehouses")
     public ApiResponse<Warehouse> createWarehouse(@RequestBody Warehouse warehouse) { return ApiResponse.ok(warehouseRepository.save(warehouse)); }

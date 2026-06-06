@@ -11,13 +11,39 @@
       </form>
     </section>
 
+    <section v-else-if="!selectedWarehouseId" class="warehouse-select-page">
+      <div class="warehouse-select-card">
+        <header>
+          <div>
+            <span>{{ user.displayName || user.username }}</span>
+            <h1>{{ labels.selectWarehouse }}</h1>
+            <p>{{ labels.selectWarehouseHint }}</p>
+          </div>
+          <button @click="logout">{{ text.logout }}</button>
+        </header>
+        <div class="warehouse-choice-grid">
+          <button v-for="warehouse in warehouses" :key="warehouse.id" @click="selectWarehouse(warehouse.id)">
+            <i>{{ warehouse.code.slice(0, 2) }}</i>
+            <b>{{ warehouse.code }}</b>
+            <span>{{ labels.enterWarehouse }}</span>
+          </button>
+        </div>
+        <div v-if="!warehouses.length" class="empty-state">{{ labels.noWarehouse }}</div>
+      </div>
+    </section>
+
     <section v-else class="workspace">
       <header class="top">
         <div>
           <strong>{{ text.workbench }}</strong>
-          <span>{{ user.displayName || user.username }} / {{ roleName(user.role) }}</span>
+          <span>{{ user.displayName || user.username }} / {{ roleName(user.role) }} / {{ currentWarehouse?.code }}</span>
         </div>
         <div class="top-actions">
+          <label class="warehouse-switcher">{{ labels.currentWarehouse }}
+            <select v-model.number="selectedWarehouseId" @change="switchWarehouse">
+              <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.code }}</option>
+            </select>
+          </label>
           <button v-if="view !== 'home'" @click="openHome">{{ text.backWorkbench }}</button>
           <button @click="logout">{{ text.logout }}</button>
         </div>
@@ -182,11 +208,63 @@
             <div class="head-actions"><button class="primary" @click="openView('outbound-create')">{{ labels.createOutbound }}</button><button @click="loadOutboundOrders">{{ text.refresh }}</button></div>
           </div>
           <div class="cards">
-            <article v-for="o in outboundOrders" :key="o.id" class="location-card">
+            <article v-for="o in outboundOrders" :key="o.id" class="location-card clickable" @click="openOutboundDetail(o.id)">
               <b>{{ o.orderNo }}</b>
               <span>{{ typeName(o.type) }} / {{ orderStatus(o.status) }}</span>
               <em>{{ o.operatorName || '-' }} / {{ o.itemCount || 0 }} SKU</em>
             </article>
+          </div>
+        </section>
+
+        <section v-if="view === 'outbound-detail'" class="panel order-detail-panel">
+          <div class="panel-head">
+            <div>
+              <h2>{{ labels.outboundDetail }} {{ outboundOrderDetail?.orderNo || '' }}</h2>
+              <p class="panel-description">{{ outboundOrderDetail ? orderStatus(outboundOrderDetail.status) : '' }}</p>
+            </div>
+            <div class="head-actions">
+              <button v-if="outboundOrderDetail?.status === 'CREATED'" class="primary" :disabled="loading.outboundAction" @click="confirmOutboundOrder">{{ labels.confirmOutbound }}</button>
+              <button v-if="outboundOrderDetail?.status === 'CREATED'" class="danger" :disabled="loading.outboundAction" @click="cancelOutboundOrder">{{ labels.cancelOutbound }}</button>
+              <button @click="openView('outbound-orders')">{{ text.back }}</button>
+            </div>
+          </div>
+          <div v-if="outboundOrderDetail" class="outbound-detail-grid">
+            <section class="detail-column">
+              <h3>{{ labels.orderBasic }}</h3>
+              <div class="detail-kv"><span>{{ labels.orderNo }}</span><b>{{ outboundOrderDetail.orderNo }}</b></div>
+              <div class="detail-kv"><span>{{ labels.orderType }}</span><b>{{ typeName(outboundOrderDetail.type) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.status }}</span><b>{{ orderStatus(outboundOrderDetail.status) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.createdAt }}</span><b>{{ formatTime(outboundOrderDetail.createdAt) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.outboundAt }}</span><b>{{ formatTime(outboundOrderDetail.completedAt) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.reason }}</span><b>{{ outboundOrderDetail.reason || '-' }}</b></div>
+              <div class="detail-kv"><span>{{ labels.remark }}</span><b>{{ outboundOrderDetail.remark || '-' }}</b></div>
+            </section>
+            <section class="detail-column">
+              <h3>{{ labels.receiverInfo }}</h3>
+              <div class="detail-kv"><span>{{ labels.receiverName }}</span><b>{{ outboundOrderDetail.receiverName || '-' }}</b></div>
+              <div class="detail-kv"><span>{{ labels.receiverPhone }}</span><b>{{ outboundOrderDetail.receiverPhone || '-' }}</b></div>
+              <div class="detail-kv"><span>{{ labels.address }}</span><b>{{ outboundOrderDetail.address || '-' }}</b></div>
+              <div class="detail-kv"><span>{{ labels.trackingNo }}</span><b>{{ outboundOrderDetail.trackingNo || '-' }}</b></div>
+              <div class="detail-kv"><span>{{ labels.operator }}</span><b>{{ outboundOrderDetail.operatorName || '-' }}</b></div>
+            </section>
+            <section class="detail-column outbound-items-column">
+              <h3>{{ labels.orderItems }}</h3>
+              <article v-for="item in outboundOrderDetail.items" :key="item.itemId" class="detail-item">
+                <b>{{ item.sku }} · {{ item.productName }}</b>
+                <span>{{ item.modelSpec || '-' }} / {{ item.unitName || '-' }}</span>
+                <em>{{ item.warehouseName }} / {{ item.locationCode }}</em>
+                <footer>{{ labels.outboundQty }} {{ item.quantity }} / {{ labels.availableQty }} {{ item.availableQuantity }}</footer>
+              </article>
+            </section>
+            <section class="detail-column outbound-history-column">
+              <h3>{{ labels.orderHistory }}</h3>
+              <article v-for="(history, index) in outboundOrderDetail.histories" :key="index" class="history-item">
+                <b>{{ historyName(history.operationType) }}</b>
+                <span>{{ formatTime(history.operationTime) }}</span>
+                <em>{{ history.operatorName || '-' }}</em>
+                <p>{{ history.remark }}</p>
+              </article>
+            </section>
           </div>
         </section>
 
@@ -203,6 +281,13 @@
             </label>
             <label>{{ labels.operator }}<input v-model.trim="orderForm.operatorName"></label>
             <label class="remark-field">{{ labels.remark }}<input v-model.trim="orderForm.remark"></label>
+          </div>
+          <div v-if="!isInboundCreate" class="form-grid outbound-recipient-fields">
+            <label>{{ labels.receiverName }}<input v-model.trim="orderForm.receiverName" :placeholder="labels.receiverNamePlaceholder"></label>
+            <label>{{ labels.receiverPhone }}<input v-model.trim="orderForm.receiverPhone" type="tel"></label>
+            <label class="address-field">{{ labels.address }}<input v-model.trim="orderForm.address"></label>
+            <label>{{ labels.reason }}<input v-model.trim="orderForm.reason"></label>
+            <label>{{ labels.trackingNo }}<input v-model.trim="orderForm.trackingNo"></label>
           </div>
           <div class="order-lines-head">
             <h3>{{ labels.orderItems }}</h3>
@@ -224,10 +309,7 @@
                 <small v-if="line.productId" class="selected-product">{{ selectedProductText(line) }}</small>
               </div>
               <label>{{ labels.warehouse }}
-                <select v-model.number="line.warehouseId" @change="line.locationId = null">
-                  <option :value="null">{{ text.select }}</option>
-                  <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
-                </select>
+                <input :value="currentWarehouse?.code || '-'" disabled>
               </label>
               <label>{{ labels.locationCode }}
                 <select v-model.number="line.locationId">
@@ -248,10 +330,7 @@
           <div class="panel-head"><h2>{{ labels.shelfCreate }}</h2><button @click="openHome">{{ text.back }}</button></div>
           <div class="form-grid">
             <label>{{ labels.warehouse }}
-              <select v-model.number="shelfForm.warehouseId">
-                <option :value="null">{{ text.select }}</option>
-                <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
-              </select>
+              <input :value="currentWarehouse?.code || '-'" disabled>
             </label>
             <label>{{ labels.shelfCode }}<input v-model.trim="shelfForm.shelfCode" placeholder="A01"></label>
             <label>{{ labels.shelfName }}<input v-model.trim="shelfForm.shelfName" placeholder="A01"></label>
@@ -274,10 +353,7 @@
         <section v-if="view === 'location-query'" class="panel">
           <div class="panel-head"><h2>{{ labels.locationQuery }}</h2><button @click="loadLocations">{{ text.refresh }}</button></div>
           <div class="filters">
-            <select v-model.number="locationFilters.warehouseId" @change="loadLocations">
-              <option :value="null">{{ labels.allWarehouse }}</option>
-              <option v-for="w in warehouses" :key="w.id" :value="w.id">{{ w.name }}</option>
-            </select>
+            <input :value="currentWarehouse?.code || '-'" disabled>
             <input v-model.trim="locationFilters.code" :placeholder="labels.locationCode" @keyup.enter="loadLocations">
             <select v-model="locationFilters.status" @change="loadLocations">
               <option value="">{{ labels.allStatus }}</option>
@@ -392,9 +468,7 @@
           </div>
           <div class="distribution-toolbar">
             <label>{{ labels.warehouse }}
-              <select v-model.number="distributionWarehouseId" @change="selectedDistributionLocation = null">
-                <option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }}</option>
-              </select>
+              <input :value="currentWarehouse?.code || '-'" disabled>
             </label>
             <label>{{ labels.horizontalAngle }}
               <input v-model.number="distributionRotation.z" type="range" min="-45" max="45">
@@ -505,10 +579,28 @@ const labels = {
   searchResult: '\u67e5\u8be2\u7ed3\u679c',
   records: '\u6761',
   noOrders: '\u6682\u65e0\u7b26\u5408\u6761\u4ef6\u7684\u8ba2\u5355',
+  selectWarehouse: '\u9009\u62e9\u4ed3\u5e93',
+  selectWarehouseHint: '\u8bf7\u9009\u62e9\u8981\u8fdb\u5165\u7684\u4ed3\u5e93\uff0c\u8fdb\u5165\u540e\u4e5f\u53ef\u5728\u53f3\u4e0a\u89d2\u5207\u6362',
+  enterWarehouse: '\u8fdb\u5165\u4ed3\u5e93',
+  currentWarehouse: '\u5f53\u524d\u4ed3\u5e93',
+  noWarehouse: '\u6682\u65e0\u53ef\u7528\u4ed3\u5e93',
   inboundOrders: '\u5165\u5e93\u8ba2\u5355',
   outboundOrders: '\u51fa\u5e93\u8ba2\u5355',
   createInbound: '\u65b0\u5efa\u5165\u5e93\u5355',
   createOutbound: '\u65b0\u5efa\u51fa\u5e93\u5355',
+  outboundDetail: '\u51fa\u5e93\u8ba2\u5355\u8be6\u60c5',
+  confirmOutbound: '\u786e\u8ba4\u51fa\u5e93',
+  cancelOutbound: '\u53d6\u6d88\u51fa\u5e93',
+  outboundAt: '\u51fa\u5e93\u65f6\u95f4',
+  receiverInfo: '\u6536\u8d27\u4fe1\u606f',
+  receiverName: '\u6536\u8d27\u4eba/\u5ba2\u6237\u540d\u79f0',
+  receiverNamePlaceholder: '\u8bf7\u8f93\u5165\u6536\u8d27\u4eba\u6216\u5ba2\u6237\u540d\u79f0',
+  receiverPhone: '\u8054\u7cfb\u7535\u8bdd',
+  address: '\u6536\u8d27\u5730\u5740',
+  reason: '\u51fa\u5e93\u539f\u56e0',
+  trackingNo: '\u7269\u6d41\u5355\u53f7/\u8ffd\u8e2a\u7f16\u53f7',
+  outboundQty: '\u51fa\u5e93\u6570\u91cf',
+  availableQty: '\u5f53\u524d\u53ef\u7528\u5e93\u5b58',
   orderType: '\u8ba2\u5355\u7c7b\u578b',
   operator: '\u64cd\u4f5c\u4eba',
   orderItems: '\u8ba2\u5355\u660e\u7ec6',
@@ -598,6 +690,7 @@ const loginUserRef = ref(null)
 const activeModule = ref('')
 const view = ref('home')
 const warehouses = ref([])
+const selectedWarehouseId = ref(Number(localStorage.getItem('wms-warehouse-id')) || null)
 const locations = ref([])
 const products = ref([])
 const stocks = ref([])
@@ -611,20 +704,22 @@ const distributionRotation = reactive({ x: 58, z: -25 })
 const dashboard = ref({})
 const inboundOrder = ref(null)
 const inboundOrderDetail = ref(null)
+const outboundOrderDetail = ref(null)
 const activeReceiveOrderNo = ref('')
 const activeDetailOrderNo = ref('')
+const activeOutboundOrderId = ref(null)
 const shelfPreview = ref([])
 const qtyMode = ref('fixed')
 const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
 const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
-const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false })
+const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, outboundAction: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
 const orderSearchFilters = reactive({ orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
 const receiveForm = reactive({ orderNo: '', locationCode: '', productCode: '', quantity: 1 })
-const orderForm = reactive({ type: 'PURCHASE', operatorName: '', remark: '', items: [] })
+const orderForm = reactive({ type: 'PURCHASE', operatorName: '', receiverName: '', receiverPhone: '', address: '', reason: '', trackingNo: '', remark: '', items: [] })
 const scanResult = reactive({ location: null, product: null })
 const refs = { orderNo: ref(null), locationCode: ref(null), productCode: ref(null), quantity: ref(null) }
 const orderNoRef = refs.orderNo
@@ -633,6 +728,7 @@ const productCodeRef = refs.productCode
 const quantityRef = refs.quantity
 
 const currentSubmodules = computed(() => modules.find(m => m.key === activeModule.value)?.subs || [])
+const currentWarehouse = computed(() => warehouses.value.find(warehouse => warehouse.id === selectedWarehouseId.value) || null)
 const stockByLocation = computed(() => stocks.value.reduce((map, stock) => {
   if (!map[stock.locationCode]) map[stock.locationCode] = []
   map[stock.locationCode].push(stock)
@@ -670,7 +766,7 @@ const currentOrderTypes = computed(() => isInboundCreate.value
       { value: 'INVENTORY_LOSS', label: '\u76d8\u4e8f\u51fa\u5e93' }
     ])
 const placeholderView = computed(() => {
-  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
+  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'outbound-detail', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
   return currentSubmodules.value.find(s => s.key === view.value)?.label || ''
 })
 const overviewCards = computed(() => [
@@ -686,8 +782,9 @@ async function login() {
   try {
     user.value = await api.post('/users/login', loginForm)
     localStorage.setItem('wms-user', JSON.stringify(user.value))
-    await bootstrap()
-    await loadView(view.value)
+    localStorage.removeItem('wms-warehouse-id')
+    selectedWarehouseId.value = null
+    await Promise.all([loadWarehouses(), loadProducts()])
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
@@ -696,37 +793,77 @@ async function login() {
 }
 function logout() {
   localStorage.removeItem('wms-user')
+  localStorage.removeItem('wms-warehouse-id')
   user.value = null
+  selectedWarehouseId.value = null
   openHome(true)
   nextTick(() => loginUserRef.value?.focus())
 }
 async function bootstrap() {
-  await Promise.all([loadWarehouses(), loadProducts(), loadAllLocations()])
-  dashboard.value = await api.get('/dashboard').catch(() => ({}))
+  if (!selectedWarehouseId.value) return
+  await Promise.all([loadProducts(), loadAllLocations(), loadStocks()])
+  dashboard.value = await api.get(`/dashboard?warehouseId=${selectedWarehouseId.value}`).catch(() => ({}))
   await Promise.all([loadInboundOrders().catch(() => {}), loadOutboundOrders().catch(() => {})])
+}
+async function selectWarehouse(warehouseId) {
+  selectedWarehouseId.value = warehouseId
+  localStorage.setItem('wms-warehouse-id', String(warehouseId))
+  applyWarehouseDefaults()
+  openHome(true)
+  await bootstrap()
+}
+async function switchWarehouse() {
+  localStorage.setItem('wms-warehouse-id', String(selectedWarehouseId.value))
+  applyWarehouseDefaults()
+  clearWarehouseData()
+  openHome(true)
+  await bootstrap()
+}
+function applyWarehouseDefaults() {
+  shelfForm.warehouseId = selectedWarehouseId.value
+  locationFilters.warehouseId = selectedWarehouseId.value
+  distributionWarehouseId.value = selectedWarehouseId.value
+  orderForm.items.forEach(line => {
+    line.warehouseId = selectedWarehouseId.value
+    line.locationId = null
+  })
+}
+function clearWarehouseData() {
+  locations.value = []
+  stocks.value = []
+  movements.value = []
+  inboundOrders.value = []
+  outboundOrders.value = []
+  orderSearchResults.value = []
+  dashboard.value = {}
+  inboundOrder.value = null
+  inboundOrderDetail.value = null
+  outboundOrderDetail.value = null
+  selectedDistributionLocation.value = null
 }
 function toggleModule(key) {
   activeModule.value = activeModule.value === key ? '' : key
 }
 function moduleForView(key) {
   if (key === 'inbound-detail') return modules.find(m => m.key === 'inbound')
+  if (key === 'outbound-detail') return modules.find(m => m.key === 'outbound')
   return modules.find(m => m.subs.some(sub => sub.key === key))
 }
-function routeForView(key, orderNo = '') {
+function routeForView(key, entityKey = '') {
   const owner = moduleForView(key)
   if (!owner) return '/'
-  const suffix = (key === 'receiving' || key === 'inbound-detail') && orderNo ? `/${encodeURIComponent(orderNo)}` : ''
+  const suffix = ['receiving', 'inbound-detail', 'outbound-detail'].includes(key) && entityKey ? `/${encodeURIComponent(entityKey)}` : ''
   return `/modules/${owner.key}/${key}${suffix}`
 }
 function viewFromRoute() {
   const parts = window.location.pathname.split('/').filter(Boolean)
   if (parts[0] !== 'modules' || parts.length < 3) return { key: 'home', orderNo: '' }
   const owner = modules.find(m => m.key === parts[1])
-  const key = owner?.subs.some(sub => sub.key === parts[2]) || parts[2] === 'inbound-detail' ? parts[2] : 'home'
-  return { key, orderNo: (key === 'receiving' || key === 'inbound-detail') && parts[3] ? decodeURIComponent(parts[3]) : '' }
+  const key = owner?.subs.some(sub => sub.key === parts[2]) || ['inbound-detail', 'outbound-detail'].includes(parts[2]) ? parts[2] : 'home'
+  return { key, entityKey: ['receiving', 'inbound-detail', 'outbound-detail'].includes(key) && parts[3] ? decodeURIComponent(parts[3]) : '' }
 }
 async function loadView(key) {
-  if (!user.value) return
+  if (!user.value || !selectedWarehouseId.value) return
   if (key === 'order-search') await searchOrders()
   if (key === 'inbound-orders') await loadInboundOrders()
   if (key === 'outbound-orders') await loadOutboundOrders()
@@ -735,22 +872,24 @@ async function loadView(key) {
   if (key === 'stock-flow') await loadMovements()
   if (key === 'stock-distribution') await loadStockDistribution()
   if (key === 'inbound-detail' && activeDetailOrderNo.value) await loadOrderDetail(activeDetailOrderNo.value)
+  if (key === 'outbound-detail' && activeOutboundOrderId.value) await loadOutboundOrderDetail(activeOutboundOrderId.value)
   if (key === 'receiving') {
     if (activeReceiveOrderNo.value) await loadReceiveOrder(activeReceiveOrderNo.value)
     else nextTick(() => focusField('orderNo'))
   }
 }
-async function activateView(key, updateHistory = true, orderNo = '') {
+async function activateView(key, updateHistory = true, entityKey = '') {
   view.value = key
   activeModule.value = moduleForView(key)?.key || ''
   if (key === 'inbound-create' || key === 'outbound-create') resetOrderForm(key)
   if (key === 'receiving') {
-    activeReceiveOrderNo.value = orderNo
-    if (!orderNo) clearReceiveState()
+    activeReceiveOrderNo.value = entityKey
+    if (!entityKey) clearReceiveState()
   }
   else activeReceiveOrderNo.value = ''
-  activeDetailOrderNo.value = key === 'inbound-detail' ? orderNo : ''
-  if (updateHistory) window.history.pushState({}, '', routeForView(key, orderNo))
+  activeDetailOrderNo.value = key === 'inbound-detail' ? entityKey : ''
+  activeOutboundOrderId.value = key === 'outbound-detail' ? Number(entityKey) : null
+  if (updateHistory) window.history.pushState({}, '', routeForView(key, entityKey))
   await loadView(key)
 }
 async function openView(key) {
@@ -766,6 +905,9 @@ async function openReceiveOrder(orderNo) {
 async function openOrderDetail(orderNo) {
   await activateView('inbound-detail', true, orderNo)
 }
+async function openOutboundDetail(id) {
+  await activateView('outbound-detail', true, id)
+}
 async function openReceiveByTracking(orderNo, trackingNo) {
   await openReceiveOrder(orderNo)
   if (trackingNo) {
@@ -778,15 +920,46 @@ function openHome(replace = false) {
   activeModule.value = ''
   activeReceiveOrderNo.value = ''
   activeDetailOrderNo.value = ''
+  activeOutboundOrderId.value = null
   window.history[replace ? 'replaceState' : 'pushState']({}, '', '/')
 }
 async function syncRoute() {
+  if (!selectedWarehouseId.value) return
   const route = viewFromRoute()
-  await activateView(route.key, false, route.orderNo)
+  await activateView(route.key, false, route.entityKey)
 }
-async function loadInboundOrders() { inboundOrders.value = await api.get('/inbound') }
+async function loadInboundOrders() { inboundOrders.value = await api.get(`/inbound?warehouseId=${selectedWarehouseId.value}`) }
 async function loadOrderDetail(orderNo) { inboundOrderDetail.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`) }
-async function loadOutboundOrders() { outboundOrders.value = await api.get('/outbound') }
+async function loadOutboundOrders() { outboundOrders.value = await api.get(`/outbound-orders?warehouseId=${selectedWarehouseId.value}`) }
+async function loadOutboundOrderDetail(id) { outboundOrderDetail.value = await api.get(`/outbound-orders/${id}`) }
+async function confirmOutboundOrder() {
+  if (!outboundOrderDetail.value || loading.outboundAction) return
+  loading.outboundAction = true
+  try {
+    const operator = user.value?.displayName || user.value?.username || ''
+    outboundOrderDetail.value = await api.post(`/outbound-orders/${outboundOrderDetail.value.id}/confirm?operatorName=${encodeURIComponent(operator)}`)
+    showToast('\u51fa\u5e93\u786e\u8ba4\u6210\u529f')
+    await Promise.all([loadOutboundOrders(), loadStocks(), loadMovements()])
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.outboundAction = false
+  }
+}
+async function cancelOutboundOrder() {
+  if (!outboundOrderDetail.value || loading.outboundAction) return
+  loading.outboundAction = true
+  try {
+    const operator = user.value?.displayName || user.value?.username || ''
+    outboundOrderDetail.value = await api.post(`/outbound-orders/${outboundOrderDetail.value.id}/cancel?operatorName=${encodeURIComponent(operator)}`)
+    showToast('\u51fa\u5e93\u8ba2\u5355\u5df2\u53d6\u6d88')
+    await loadOutboundOrders()
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.outboundAction = false
+  }
+}
 async function searchOrders() {
   if (orderSearchFilters.createdFrom && orderSearchFilters.createdTo && orderSearchFilters.createdFrom > orderSearchFilters.createdTo) {
     return showToast('\u521b\u5efa\u8d77\u59cb\u65e5\u671f\u4e0d\u80fd\u665a\u4e8e\u7ed3\u675f\u65e5\u671f', 'error')
@@ -797,6 +970,7 @@ async function searchOrders() {
     Object.entries(orderSearchFilters).forEach(([key, value]) => {
       if (value) query.set(key, value)
     })
+    query.set('warehouseId', selectedWarehouseId.value)
     orderSearchResults.value = await api.get(`/orders/search?${query.toString()}`)
   } catch (e) {
     showToast(e.message, 'error')
@@ -808,15 +982,21 @@ async function resetOrderSearch() {
   Object.assign(orderSearchFilters, { orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
   await searchOrders()
 }
-async function loadWarehouses() { warehouses.value = await api.get('/warehouses') }
+async function loadWarehouses() {
+  warehouses.value = (await api.get('/warehouses')).filter(warehouse => /^[A-Z]{5}$/.test(warehouse.code || ''))
+  if (selectedWarehouseId.value && !warehouses.value.some(warehouse => warehouse.id === selectedWarehouseId.value)) {
+    selectedWarehouseId.value = null
+    localStorage.removeItem('wms-warehouse-id')
+  }
+}
 async function loadProducts() { products.value = await api.get('/products') }
-async function loadAllLocations() { locations.value = await api.get('/locations') }
-async function loadStocks() { stocks.value = await api.get('/stocks') }
-async function loadMovements() { movements.value = await api.get('/movements') }
+async function loadAllLocations() { locations.value = await api.get(`/locations?warehouseId=${selectedWarehouseId.value}`) }
+async function loadStocks() { stocks.value = await api.get(`/stocks?warehouseId=${selectedWarehouseId.value}`) }
+async function loadMovements() { movements.value = await api.get(`/movements?warehouseId=${selectedWarehouseId.value}`) }
 async function loadStockDistribution() {
   await Promise.all([loadAllLocations(), loadStocks()])
   if (!distributionWarehouseId.value || !warehouses.value.some(warehouse => warehouse.id === distributionWarehouseId.value)) {
-    distributionWarehouseId.value = warehouses.value[0]?.id || null
+    distributionWarehouseId.value = selectedWarehouseId.value
   }
   selectedDistributionLocation.value = null
 }
@@ -870,11 +1050,16 @@ function resetDistributionView() {
   Object.assign(distributionRotation, { x: 58, z: -25 })
 }
 function newOrderLine() {
-  return { key: `${Date.now()}-${Math.random()}`, productId: null, productKeyword: '', showProductOptions: false, warehouseId: null, locationId: null, quantity: 1 }
+  return { key: `${Date.now()}-${Math.random()}`, productId: null, productKeyword: '', showProductOptions: false, warehouseId: selectedWarehouseId.value, locationId: null, quantity: 1 }
 }
 function resetOrderForm(targetView = view.value) {
   orderForm.type = targetView === 'inbound-create' ? 'PURCHASE' : 'SALE'
   orderForm.operatorName = user.value?.displayName || user.value?.username || ''
+  orderForm.receiverName = ''
+  orderForm.receiverPhone = ''
+  orderForm.address = ''
+  orderForm.reason = ''
+  orderForm.trackingNo = ''
   orderForm.remark = ''
   orderForm.items.splice(0, orderForm.items.length, newOrderLine())
 }
@@ -911,18 +1096,34 @@ function locationsForWarehouse(warehouseId) {
 async function createOrder() {
   const invalid = orderForm.items.some(line => !line.productId || !line.warehouseId || !line.locationId || !line.quantity || line.quantity < 1)
   if (invalid) return showToast('\u8bf7\u5b8c\u6574\u586b\u5199\u6240\u6709\u8ba2\u5355\u660e\u7ec6', 'error')
+  if (!isInboundCreate.value && (!orderForm.receiverName || !orderForm.address || !orderForm.reason)) {
+    return showToast('\u8bf7\u586b\u5199\u6536\u8d27\u4eba\u3001\u6536\u8d27\u5730\u5740\u548c\u51fa\u5e93\u539f\u56e0', 'error')
+  }
   loading.order = true
   try {
-    const path = isInboundCreate.value ? '/inbound' : '/outbound'
-    const order = await api.post(path, {
+    const path = isInboundCreate.value ? '/inbound' : '/outbound-orders'
+    const payload = {
       type: orderForm.type,
       operatorName: orderForm.operatorName,
       remark: orderForm.remark,
       items: orderForm.items.map(({ productId, warehouseId, locationId, quantity }) => ({ productId, warehouseId, locationId, quantity: Number(quantity) }))
-    })
+    }
+    if (!isInboundCreate.value) {
+      Object.assign(payload, {
+        receiverName: orderForm.receiverName,
+        receiverPhone: orderForm.receiverPhone,
+        address: orderForm.address,
+        reason: orderForm.reason,
+        trackingNo: orderForm.trackingNo
+      })
+    }
+    const order = await api.post(path, payload)
     showToast(`\u8ba2\u5355 ${order.orderNo} \u521b\u5efa\u6210\u529f`)
     if (isInboundCreate.value) await openOrderDetail(order.orderNo)
-    else await openView('outbound-orders')
+    else {
+      await loadOutboundOrders()
+      await openOutboundDetail(order.id)
+    }
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
@@ -1110,7 +1311,7 @@ function formatTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
 }
 function historyName(type) {
-  return { CREATE: '\u521b\u5efa\u8ba2\u5355', INBOUND: '\u6536\u8d27\u5165\u5e93', COMPLETE: '\u5b8c\u6210\u8ba2\u5355' }[type] || type
+  return { CREATE: '\u521b\u5efa\u8ba2\u5355', INBOUND: '\u6536\u8d27\u5165\u5e93', OUTBOUND: '\u786e\u8ba4\u51fa\u5e93', COMPLETE: '\u5b8c\u6210\u8ba2\u5355', CANCEL: '\u53d6\u6d88\u8ba2\u5355' }[type] || type
 }
 function focusField(field) { nextTick(() => refs[field]?.value?.focus()) }
 function focusNext(field) {
@@ -1158,11 +1359,14 @@ function typeName(type) {
 }
 
 onMounted(async () => {
-  await syncRoute()
   window.addEventListener('popstate', syncRoute)
   if (user.value) {
-    await bootstrap()
-    await loadView(view.value)
+    await Promise.all([loadWarehouses(), loadProducts()])
+    if (selectedWarehouseId.value) {
+      applyWarehouseDefaults()
+      await bootstrap()
+      await syncRoute()
+    } else openHome(true)
   } else nextTick(() => loginUserRef.value?.focus())
 })
 onUnmounted(() => window.removeEventListener('popstate', syncRoute))
