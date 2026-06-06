@@ -200,7 +200,9 @@ CREATE TABLE IF NOT EXISTS app_users (
 );
 
 INSERT IGNORE INTO warehouses (id, code, name, address, manager, created_at, updated_at)
-VALUES (1, 'WH-SH-01', '上海主仓', '上海市浦东新区', '仓库管理员', NOW(), NOW());
+VALUES
+  (1, 'ULHKG', 'ULHKG', NULL, NULL, NOW(), NOW()),
+  (2, 'USLAX', 'USLAX', NULL, NULL, NOW(), NOW());
 
 INSERT IGNORE INTO storage_locations (id, code, warehouse_id, capacity, occupied, status, created_at, updated_at)
 VALUES (1, 'A01-01-01', 1, 1000, 0, 'ENABLED', NOW(), NOW());

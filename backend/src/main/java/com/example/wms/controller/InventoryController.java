@@ -5,6 +5,7 @@ import com.example.wms.domain.InventoryCheck;
 import com.example.wms.domain.StockMovement;
 import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
+import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
@@ -16,8 +17,11 @@ import com.example.wms.dto.ViewDtos.StockView;
 import com.example.wms.repository.InventoryCheckRepository;
 import com.example.wms.repository.StockMovementRepository;
 import com.example.wms.service.InventoryService;
+import com.example.wms.domain.enums.OrderStatus;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -75,6 +79,18 @@ public class InventoryController {
 
     @GetMapping("/outbound")
     public ApiResponse<List<OrderSummaryView>> outboundOrders() { return ApiResponse.ok(inventoryService.outboundOrders()); }
+
+    @GetMapping("/orders/search")
+    public ApiResponse<List<OrderSearchView>> searchOrders(
+            @RequestParam(required = false) String orderNo,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate createdFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate createdTo,
+            @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(inventoryService.searchOrders(
+                orderNo, direction, status, createdFrom, createdTo, operatorName));
+    }
 
     @PostMapping("/inventory-checks")
     public ApiResponse<InventoryCheck> check(@Valid @RequestBody CheckRequest request) { return ApiResponse.ok(inventoryService.confirmCheck(request)); }

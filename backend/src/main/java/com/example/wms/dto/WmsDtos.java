@@ -29,6 +29,9 @@ public class WmsDtos {
                                          List<InboundItemView> items, List<OrderHistoryView> histories) {}
     public record OrderSummaryView(Long id, String orderNo, String type, OrderStatus status, String operatorName,
                                    String remark, Integer itemCount) {}
+    public record OrderSearchView(Long id, String orderNo, String direction, String type, OrderStatus status,
+                                  String operatorName, String remark, Integer itemCount, LocalDateTime createdAt,
+                                  LocalDateTime completedAt) {}
     public record ScanLocationView(String code, String warehouseName, String shelfCode, LocationStatus status,
                                    Integer capacity, Integer occupied) {}
     public record ScanProductView(String sku, String barcode, String productName, String modelSpec, String unitName,

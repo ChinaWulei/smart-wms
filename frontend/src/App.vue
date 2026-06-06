@@ -47,6 +47,81 @@
         <div v-if="view === 'home'" class="empty-state">{{ text.pickModule }}</div>
         <div v-else-if="placeholderView" class="empty-state">{{ placeholderView }} - {{ text.phaseHint }}</div>
 
+        <section v-if="view === 'order-search'" class="panel order-search-panel">
+          <div class="panel-head">
+            <div>
+              <h2>{{ labels.orderSearch }}</h2>
+              <p class="panel-description">{{ labels.orderSearchHint }}</p>
+            </div>
+            <button @click="resetOrderSearch">{{ labels.reset }}</button>
+          </div>
+          <form class="order-search-form" @submit.prevent="searchOrders">
+            <label>{{ labels.orderNo }}
+              <input v-model.trim="orderSearchFilters.orderNo" :placeholder="labels.orderNoPlaceholder">
+            </label>
+            <label>{{ labels.direction }}
+              <select v-model="orderSearchFilters.direction">
+                <option value="">{{ labels.allDirections }}</option>
+                <option value="INBOUND">{{ labels.inbound }}</option>
+                <option value="OUTBOUND">{{ labels.outbound }}</option>
+              </select>
+            </label>
+            <label>{{ labels.status }}
+              <select v-model="orderSearchFilters.status">
+                <option value="">{{ labels.allStatus }}</option>
+                <option value="CREATED">{{ orderStatus('CREATED') }}</option>
+                <option value="COMPLETED">{{ orderStatus('COMPLETED') }}</option>
+                <option value="CANCELLED">{{ orderStatus('CANCELLED') }}</option>
+              </select>
+            </label>
+            <label>{{ labels.creator }}
+              <input v-model.trim="orderSearchFilters.operatorName" :placeholder="labels.creatorPlaceholder">
+            </label>
+            <label>{{ labels.createdFrom }}
+              <input v-model="orderSearchFilters.createdFrom" type="date">
+            </label>
+            <label>{{ labels.createdTo }}
+              <input v-model="orderSearchFilters.createdTo" type="date">
+            </label>
+            <button class="primary search-submit" :disabled="loading.orderSearch">
+              {{ loading.orderSearch ? labels.searching : labels.search }}
+            </button>
+          </form>
+
+          <div class="result-summary">{{ labels.searchResult }} <b>{{ orderSearchResults.length }}</b> {{ labels.records }}</div>
+          <div class="table-wrap">
+            <table class="order-table">
+              <thead>
+                <tr>
+                  <th>{{ labels.orderNo }}</th>
+                  <th>{{ labels.direction }}</th>
+                  <th>{{ labels.orderType }}</th>
+                  <th>{{ labels.status }}</th>
+                  <th>{{ labels.creator }}</th>
+                  <th>{{ labels.itemCount }}</th>
+                  <th>{{ labels.createdAt }}</th>
+                  <th>{{ labels.remark }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="order in orderSearchResults" :key="`${order.direction}-${order.id}`">
+                  <td><button v-if="order.direction === 'INBOUND'" class="link-button" @click="openOrderDetail(order.orderNo)">{{ order.orderNo }}</button><b v-else>{{ order.orderNo }}</b></td>
+                  <td><span :class="['direction-tag', order.direction.toLowerCase()]">{{ directionName(order.direction) }}</span></td>
+                  <td>{{ typeName(order.type) }}</td>
+                  <td><span :class="['status-tag', order.status.toLowerCase()]">{{ orderStatus(order.status) }}</span></td>
+                  <td>{{ order.operatorName || '-' }}</td>
+                  <td>{{ order.itemCount || 0 }}</td>
+                  <td>{{ formatTime(order.createdAt) }}</td>
+                  <td class="remark-cell">{{ order.remark || '-' }}</td>
+                </tr>
+                <tr v-if="!orderSearchResults.length">
+                  <td colspan="8" class="table-empty">{{ labels.noOrders }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <section v-if="view === 'inbound-orders'" class="panel">
           <div class="panel-head">
             <h2>{{ labels.inboundOrders }}</h2>
@@ -257,9 +332,7 @@
             <label :class="{ disabled: qtyMode === 'fixed', error: errorField === 'quantity' }">{{ labels.qty }}
               <input ref="quantityRef" v-model.number="receiveForm.quantity" type="number" min="1" :disabled="qtyMode === 'fixed'" @focus="selectField('quantity')" @keyup.enter="handleEnter('quantity')">
             </label>
-            <button ref="confirmRef" class="primary wide" :disabled="loading.receiveSubmit" @click="confirmReceive">
-              {{ loading.receiveSubmit ? text.submitting : labels.confirmReceive }}
-            </button>
+            <p class="auto-receive-hint">{{ loading.receiveSubmit ? labels.receivingNow : labels.autoReceiveHint }}</p>
           </section>
 
           <section v-if="scanResult.location || scanResult.product" class="scan-result">
@@ -332,6 +405,26 @@ const text = {
   backWorkbench: '\u8fd4\u56de\u5de5\u4f5c\u53f0'
 }
 const labels = {
+  orderSearch: '\u8ba2\u5355\u641c\u7d22',
+  orderSearchHint: '\u6309\u8ba2\u5355\u72b6\u6001\u3001\u521b\u5efa\u65e5\u671f\u548c\u521b\u5efa\u4eba\u7b5b\u9009\u5165\u5e93\u53ca\u51fa\u5e93\u8ba2\u5355',
+  orderNo: '\u8ba2\u5355\u53f7',
+  orderNoPlaceholder: '\u8f93\u5165\u8ba2\u5355\u53f7',
+  direction: '\u8ba2\u5355\u65b9\u5411',
+  allDirections: '\u5168\u90e8\u65b9\u5411',
+  inbound: '\u5165\u5e93',
+  outbound: '\u51fa\u5e93',
+  creator: '\u521b\u5efa\u4eba',
+  creatorPlaceholder: '\u8f93\u5165\u521b\u5efa\u4eba',
+  createdFrom: '\u521b\u5efa\u8d77\u59cb\u65e5\u671f',
+  createdTo: '\u521b\u5efa\u7ed3\u675f\u65e5\u671f',
+  createdAt: '\u521b\u5efa\u65f6\u95f4',
+  itemCount: 'SKU \u6570',
+  search: '\u67e5\u8be2',
+  searching: '\u67e5\u8be2\u4e2d...',
+  reset: '\u91cd\u7f6e',
+  searchResult: '\u67e5\u8be2\u7ed3\u679c',
+  records: '\u6761',
+  noOrders: '\u6682\u65e0\u7b26\u5408\u6761\u4ef6\u7684\u8ba2\u5355',
   inboundOrders: '\u5165\u5e93\u8ba2\u5355',
   outboundOrders: '\u51fa\u5e93\u8ba2\u5355',
   createInbound: '\u65b0\u5efa\u5165\u5e93\u5355',
@@ -374,7 +467,8 @@ const labels = {
   fixedQty: '\u56fa\u5b9a1\u4ef6',
   customQty: '\u81ea\u5b9a\u4e49\u6570\u91cf',
   qty: '\u6570\u91cf',
-  confirmReceive: '\u786e\u8ba4\u6536\u8d27',
+  receivingNow: '\u6b63\u5728\u6536\u8d27...',
+  autoReceiveHint: '\u56fa\u5b9a\u6570\u91cf\u626b\u7801\u540e\u81ea\u52a8\u6536\u8d27\uff0c\u81ea\u5b9a\u4e49\u6570\u91cf\u8f93\u5165\u540e\u6309\u56de\u8f66\u6536\u8d27',
   scanResult: '\u5f53\u524d\u626b\u63cf\u7ed3\u679c',
   productName: '\u5546\u54c1\u540d\u79f0',
   spec: '\u89c4\u683c\u578b\u53f7',
@@ -387,6 +481,7 @@ const labels = {
   stockFlow: '\u5e93\u5b58\u6d41\u6c34'
 }
 const modules = [
+  module('order', '\u8ba2\u5355\u7ba1\u7406', '\u5355', [['order-search', labels.orderSearch]]),
   module('inbound', '\u5165\u5e93\u6a21\u5757', '\u5165', [['inbound-orders', labels.inboundOrders], ['inbound-create', labels.createInbound], ['receiving', labels.receiving], ['inbound-records', '\u5165\u5e93\u8bb0\u5f55']]),
   module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', labels.outboundOrders], ['outbound-create', labels.createOutbound], ['picking', '\u62e3\u8d27\u51fa\u5e93'], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55']]),
   module('stock', '\u5e93\u5b58\u7ba1\u7406', '\u5b58', [['stock-query', labels.stockQuery], ['stock-flow', labels.stockFlow], ['stock-adjust', '\u5e93\u5b58\u8c03\u6574'], ['stock-distribution', '\u5546\u54c1\u5e93\u5b58\u5206\u5e03']]),
@@ -413,6 +508,7 @@ const stocks = ref([])
 const movements = ref([])
 const inboundOrders = ref([])
 const outboundOrders = ref([])
+const orderSearchResults = ref([])
 const dashboard = ref({})
 const inboundOrder = ref(null)
 const inboundOrderDetail = ref(null)
@@ -424,18 +520,18 @@ const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
 const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
-const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false })
+const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
+const orderSearchFilters = reactive({ orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
 const receiveForm = reactive({ orderNo: '', locationCode: '', productCode: '', quantity: 1 })
 const orderForm = reactive({ type: 'PURCHASE', operatorName: '', remark: '', items: [] })
 const scanResult = reactive({ location: null, product: null })
-const refs = { orderNo: ref(null), locationCode: ref(null), productCode: ref(null), quantity: ref(null), confirm: ref(null) }
+const refs = { orderNo: ref(null), locationCode: ref(null), productCode: ref(null), quantity: ref(null) }
 const orderNoRef = refs.orderNo
 const locationCodeRef = refs.locationCode
 const productCodeRef = refs.productCode
 const quantityRef = refs.quantity
-const confirmRef = refs.confirm
 
 const currentSubmodules = computed(() => modules.find(m => m.key === activeModule.value)?.subs || [])
 const isInboundCreate = computed(() => view.value === 'inbound-create')
@@ -454,7 +550,7 @@ const currentOrderTypes = computed(() => isInboundCreate.value
       { value: 'INVENTORY_LOSS', label: '\u76d8\u4e8f\u51fa\u5e93' }
     ])
 const placeholderView = computed(() => {
-  if (['home', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow'].includes(view.value)) return ''
+  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow'].includes(view.value)) return ''
   return currentSubmodules.value.find(s => s.key === view.value)?.label || ''
 })
 const overviewCards = computed(() => [
@@ -511,6 +607,7 @@ function viewFromRoute() {
 }
 async function loadView(key) {
   if (!user.value) return
+  if (key === 'order-search') await searchOrders()
   if (key === 'inbound-orders') await loadInboundOrders()
   if (key === 'outbound-orders') await loadOutboundOrders()
   if (key === 'location-query') await loadLocations()
@@ -569,6 +666,27 @@ async function syncRoute() {
 async function loadInboundOrders() { inboundOrders.value = await api.get('/inbound') }
 async function loadOrderDetail(orderNo) { inboundOrderDetail.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`) }
 async function loadOutboundOrders() { outboundOrders.value = await api.get('/outbound') }
+async function searchOrders() {
+  if (orderSearchFilters.createdFrom && orderSearchFilters.createdTo && orderSearchFilters.createdFrom > orderSearchFilters.createdTo) {
+    return showToast('\u521b\u5efa\u8d77\u59cb\u65e5\u671f\u4e0d\u80fd\u665a\u4e8e\u7ed3\u675f\u65e5\u671f', 'error')
+  }
+  loading.orderSearch = true
+  try {
+    const query = new URLSearchParams()
+    Object.entries(orderSearchFilters).forEach(([key, value]) => {
+      if (value) query.set(key, value)
+    })
+    orderSearchResults.value = await api.get(`/orders/search?${query.toString()}`)
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.orderSearch = false
+  }
+}
+async function resetOrderSearch() {
+  Object.assign(orderSearchFilters, { orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
+  await searchOrders()
+}
 async function loadWarehouses() { warehouses.value = await api.get('/warehouses') }
 async function loadProducts() { products.value = await api.get('/products') }
 async function loadAllLocations() { locations.value = await api.get('/locations') }
@@ -649,7 +767,7 @@ async function handleEnter(field) {
   if (field === 'orderNo') return loadInboundOrder()
   if (field === 'locationCode') return scanLocation()
   if (field === 'productCode') return scanProduct()
-  if (field === 'quantity') return focusField('confirm')
+  if (field === 'quantity') return confirmReceive()
 }
 function scheduleScan(field) {
   clearScanTimer(field)
@@ -716,11 +834,17 @@ async function scanProduct() {
     scanResult.product = await api.get(`/scan/inbound-product?orderNo=${encodeURIComponent(receiveForm.orderNo)}&code=${encodeURIComponent(receiveForm.productCode)}`)
     receiveForm.quantity = qtyMode.value === 'fixed' ? 1 : null
     showToast('\u5546\u54c1\u8bc6\u522b\u6210\u529f')
-    qtyMode.value === 'fixed' ? focusField('confirm') : focusField('quantity')
+    if (qtyMode.value === 'fixed') await confirmReceive()
+    else focusField('quantity')
   })
 }
 async function confirmReceive() {
   if (loading.receiveSubmit) return
+  if (!receiveForm.quantity || Number(receiveForm.quantity) < 1) {
+    errorField.value = 'quantity'
+    showToast('\u8bf7\u8f93\u5165\u6709\u6548\u7684\u6536\u8d27\u6570\u91cf', 'error')
+    return selectField('quantity')
+  }
   loading.receiveSubmit = true
   try {
     inboundOrder.value = await api.post('/inbound/receive', {
@@ -788,7 +912,7 @@ function historyName(type) {
 }
 function focusField(field) { nextTick(() => refs[field]?.value?.focus()) }
 function focusNext(field) {
-  const order = ['orderNo', 'locationCode', 'productCode', 'quantity', 'confirm']
+  const order = ['orderNo', 'locationCode', 'productCode', 'quantity']
   focusField(order[order.indexOf(field) + 1])
 }
 function selectField(field) { nextTick(() => refs[field]?.value?.select?.()) }
@@ -810,6 +934,9 @@ function locationStatus(l) {
 }
 function orderStatus(status) {
   return { CREATED: '\u5f85\u5904\u7406', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
+}
+function directionName(direction) {
+  return { INBOUND: labels.inbound, OUTBOUND: labels.outbound }[direction] || direction
 }
 function receiveStatusName(status) {
   return { NOT_RECEIVED: '\u672a\u6536\u8d27', PARTIAL: '\u90e8\u5206\u6536\u8d27', DONE: '\u5df2\u5b8c\u6210', OVER: '\u8d85\u51fa' }[status] || status

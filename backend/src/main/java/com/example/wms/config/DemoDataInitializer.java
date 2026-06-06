@@ -62,15 +62,15 @@ public class DemoDataInitializer implements CommandLineRunner {
         product("P006", "697000000006", "电脑配件", "IT耗材", "通用", "件", "默认供应商", 20, 0);
         product("P007", "697000000007", "清洁工具", "清洁用品", "套装", "套", "默认供应商", 10, 0);
 
-        Warehouse a = warehouse("A", "A仓库");
-        warehouse("B", "B仓库");
-        StorageLocation demoStockLocation = location("LT-DEMO-1-1-1", a, 1000);
-        stock(p1, a, demoStockLocation, 80);
-        stock(p3, a, demoStockLocation, 300);
-        stock(p4, a, demoStockLocation, 20);
+        Warehouse ulhkg = warehouse("ULHKG", "A", "WH-SH-01");
+        warehouse("USLAX", "B");
+        StorageLocation demoStockLocation = location("LT-DEMO-1-1-1", ulhkg, 1000);
+        stock(p1, ulhkg, demoStockLocation, 80);
+        stock(p3, ulhkg, demoStockLocation, 300);
+        stock(p4, ulhkg, demoStockLocation, 20);
 
-        inboundOrder(p1, p4, p5, a, demoStockLocation);
-        outboundOrder(p1, p3, a, demoStockLocation);
+        inboundOrder(p1, p4, p5, ulhkg, demoStockLocation);
+        outboundOrder(p1, p3, ulhkg, demoStockLocation);
     }
 
     private void user(String username, String password, String displayName, Role role) {
@@ -100,13 +100,15 @@ public class DemoDataInitializer implements CommandLineRunner {
         return productRepository.save(product);
     }
 
-    private Warehouse warehouse(String code, String name) {
-        return warehouseRepository.findByCode(code).orElseGet(() -> {
-            Warehouse warehouse = new Warehouse();
-            warehouse.setCode(code);
-            warehouse.setName(name);
-            return warehouseRepository.save(warehouse);
-        });
+    private Warehouse warehouse(String code, String... legacyCodes) {
+        Warehouse warehouse = warehouseRepository.findByCode(code).orElse(null);
+        for (String legacyCode : legacyCodes) {
+            if (warehouse == null) warehouse = warehouseRepository.findByCode(legacyCode).orElse(null);
+        }
+        if (warehouse == null) warehouse = new Warehouse();
+        warehouse.setCode(code);
+        warehouse.setName(code);
+        return warehouseRepository.save(warehouse);
     }
 
     private StorageLocation location(String code, Warehouse warehouse, int capacity) {

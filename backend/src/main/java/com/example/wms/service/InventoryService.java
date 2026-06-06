@@ -28,6 +28,7 @@ import com.example.wms.dto.WmsDtos.InboundItemView;
 import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderHistoryView;
+import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
@@ -41,10 +42,13 @@ import com.example.wms.repository.StockMovementRepository;
 import com.example.wms.repository.StockRepository;
 import com.example.wms.repository.StorageLocationRepository;
 import com.example.wms.repository.WarehouseRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -135,6 +139,25 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public List<OrderSummaryView> outboundOrders() {
         return outboundOrderRepository.findAll().stream().map(this::outboundSummary).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderSearchView> searchOrders(String orderNo, String direction, OrderStatus status,
+                                              LocalDate createdFrom, LocalDate createdTo, String operatorName) {
+        LocalDateTime from = createdFrom == null ? null : createdFrom.atStartOfDay();
+        LocalDateTime to = createdTo == null ? null : createdTo.plusDays(1).atStartOfDay();
+        Stream<OrderSearchView> orders = Stream.concat(
+                inboundOrderRepository.findAll().stream().map(this::inboundSearchView),
+                outboundOrderRepository.findAll().stream().map(this::outboundSearchView));
+        return orders
+                .filter(order -> blank(direction) || order.direction().equalsIgnoreCase(direction))
+                .filter(order -> blank(orderNo) || containsIgnoreCase(order.orderNo(), orderNo))
+                .filter(order -> status == null || order.status() == status)
+                .filter(order -> from == null || !order.createdAt().isBefore(from))
+                .filter(order -> to == null || order.createdAt().isBefore(to))
+                .filter(order -> blank(operatorName) || containsIgnoreCase(order.operatorName(), operatorName))
+                .sorted(Comparator.comparing(OrderSearchView::createdAt).reversed())
+                .toList();
     }
 
     @Transactional
@@ -404,6 +427,26 @@ public class InventoryService {
     private OrderSummaryView outboundSummary(OutboundOrder order) {
         return new OrderSummaryView(order.getId(), order.getOrderNo(), order.getType().name(), order.getStatus(),
                 order.getOperatorName(), order.getRemark(), order.getItems().size());
+    }
+
+    private OrderSearchView inboundSearchView(InboundOrder order) {
+        return new OrderSearchView(order.getId(), order.getOrderNo(), "INBOUND", order.getType().name(),
+                order.getStatus(), order.getOperatorName(), order.getRemark(), order.getItems().size(),
+                order.getCreatedAt(), order.getCompletedAt());
+    }
+
+    private OrderSearchView outboundSearchView(OutboundOrder order) {
+        return new OrderSearchView(order.getId(), order.getOrderNo(), "OUTBOUND", order.getType().name(),
+                order.getStatus(), order.getOperatorName(), order.getRemark(), order.getItems().size(),
+                order.getCreatedAt(), order.getCompletedAt());
+    }
+
+    private boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean containsIgnoreCase(String value, String keyword) {
+        return value != null && value.toLowerCase().contains(keyword.trim().toLowerCase());
     }
 
     private String receiveStatus(int expected, int received) {
