@@ -19,6 +19,7 @@ public class InboundOrderItem extends BaseEntity {
     private StorageLocation location;
     private Integer quantity;
     private Integer receivedQuantity = 0;
+    private String trackingNo;
 
     public InboundOrder getOrder() { return order; }
     public void setOrder(InboundOrder order) { this.order = order; }
@@ -32,4 +33,6 @@ public class InboundOrderItem extends BaseEntity {
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
     public Integer getReceivedQuantity() { return receivedQuantity; }
     public void setReceivedQuantity(Integer receivedQuantity) { this.receivedQuantity = receivedQuantity; }
+    public String getTrackingNo() { return trackingNo; }
+    public void setTrackingNo(String trackingNo) { this.trackingNo = trackingNo; }
 }

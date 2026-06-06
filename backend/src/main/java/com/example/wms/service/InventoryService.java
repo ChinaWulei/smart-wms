@@ -25,7 +25,9 @@ import com.example.wms.dto.OrderDtos.LineItem;
 import com.example.wms.dto.OrderDtos.OutboundRequest;
 import com.example.wms.dto.ViewDtos.StockView;
 import com.example.wms.dto.WmsDtos.InboundItemView;
+import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
+import com.example.wms.dto.WmsDtos.OrderHistoryView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
@@ -81,6 +83,7 @@ public class InventoryService {
         order.setType(request.type());
         order.setOperatorName(request.operatorName());
         order.setRemark(request.remark());
+        int itemIndex = 1;
         for (LineItem line : request.items()) {
             Product product = product(line.productId());
             Warehouse warehouse = warehouse(line.warehouseId());
@@ -93,6 +96,7 @@ public class InventoryService {
             item.setLocation(location);
             item.setQuantity(line.quantity());
             item.setReceivedQuantity(0);
+            item.setTrackingNo(trackingNo(order.getOrderNo(), itemIndex++));
             order.getItems().add(item);
         }
         order.setStatus(OrderStatus.CREATED);
@@ -177,7 +181,12 @@ public class InventoryService {
     }
 
     @Transactional(readOnly = true)
-    public InboundOrderView getInboundOrder(String orderNo) {
+    public InboundOrderDetailView getInboundOrder(String orderNo) {
+        return inboundDetail(inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在")));
+    }
+
+    @Transactional(readOnly = true)
+    public InboundOrderView getReceivableInboundOrder(String orderNo) {
         InboundOrder order = inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在"));
         validateReceivable(order);
         return inboundView(order);
@@ -195,8 +204,8 @@ public class InventoryService {
     public ScanProductView scanInboundProduct(String orderNo, String productCode) {
         InboundOrder order = inboundOrderRepository.findByOrderNo(orderNo).orElseThrow(() -> new BizException("入库单不存在"));
         validateReceivable(order);
-        Product product = findProductByCode(productCode);
-        InboundOrderItem item = findInboundItem(order, product);
+        InboundOrderItem item = findInboundItemByCode(order, productCode);
+        Product product = item.getProduct();
         int expected = n(item.getQuantity());
         int received = n(item.getReceivedQuantity());
         return new ScanProductView(product.getSku(), product.getBarcode(), product.getName(), product.getModelSpec(),
@@ -212,8 +221,8 @@ public class InventoryService {
         }
         StorageLocation location = locationRepository.findByCode(request.locationCode()).orElseThrow(() -> new BizException("货位不存在或已禁用"));
         if (location.getStatus() == LocationStatus.DISABLED) throw new BizException("货位不存在或已禁用");
-        Product product = findProductByCode(request.productCode());
-        InboundOrderItem item = findInboundItem(order, product);
+        InboundOrderItem item = findInboundItemByCode(order, request.productCode());
+        Product product = item.getProduct();
         int expected = n(item.getQuantity());
         int afterReceived = n(item.getReceivedQuantity()) + request.quantity();
         if (!Boolean.TRUE.equals(request.allowOverReceive()) && afterReceived > expected) {
@@ -329,6 +338,13 @@ public class InventoryService {
                 .orElseThrow(() -> new BizException("商品不在当前入库单中"));
     }
 
+    private InboundOrderItem findInboundItemByCode(InboundOrder order, String code) {
+        return order.getItems().stream()
+                .filter(i -> Objects.equals(effectiveTrackingNo(i), code))
+                .findFirst()
+                .orElseGet(() -> findInboundItem(order, findProductByCode(code)));
+    }
+
     private void validateReceivable(InboundOrder order) {
         if (order.getStatus() != OrderStatus.CREATED) {
             throw new BizException("入库单不是待收货状态");
@@ -337,17 +353,47 @@ public class InventoryService {
 
     private InboundOrderView inboundView(InboundOrder order) {
         List<InboundItemView> items = order.getItems().stream().map(item -> {
-            Product p = item.getProduct();
             int expected = n(item.getQuantity());
             int received = n(item.getReceivedQuantity());
-            return new InboundItemView(item.getId(), p.getSku(), p.getBarcode(), p.getName(), p.getModelSpec(),
-                    p.getUnitName(), expected, received, expected - received, receiveStatus(expected, received));
+            return inboundItemView(item, expected, received);
         }).toList();
         int expectedTotal = items.stream().mapToInt(InboundItemView::expectedQuantity).sum();
         int receivedTotal = items.stream().mapToInt(InboundItemView::receivedQuantity).sum();
         int progress = expectedTotal == 0 ? 0 : Math.min(100, receivedTotal * 100 / expectedTotal);
         return new InboundOrderView(order.getOrderNo(), order.getOperatorName(), order.getType().name(),
                 order.getStatus(), expectedTotal, receivedTotal, progress, items);
+    }
+
+    private InboundItemView inboundItemView(InboundOrderItem item, int expected, int received) {
+        Product p = item.getProduct();
+        return new InboundItemView(item.getId(), p.getSku(), p.getBarcode(), p.getName(), p.getModelSpec(),
+                p.getUnitName(), expected, received, expected - received, receiveStatus(expected, received),
+                effectiveTrackingNo(item), item.getWarehouse().getName(), item.getLocation().getCode());
+    }
+
+    private InboundOrderDetailView inboundDetail(InboundOrder order) {
+        InboundOrderView view = inboundView(order);
+        List<OrderHistoryView> histories = new java.util.ArrayList<>();
+        histories.add(new OrderHistoryView(order.getCreatedAt(), "CREATE", order.getOperatorName(), "创建入库订单"));
+        movementRepository.findBySourceNoOrderByMovementTimeDesc(order.getOrderNo()).forEach(m ->
+                histories.add(new OrderHistoryView(m.getMovementTime(), m.getType().name(), m.getOperatorName(),
+                        m.getProduct().getSku() + " / " + m.getLocation().getCode() + " / " + m.getQuantity())));
+        if (order.getCompletedAt() != null) {
+            histories.add(new OrderHistoryView(order.getCompletedAt(), "COMPLETE", order.getOperatorName(), "入库订单完成"));
+        }
+        return new InboundOrderDetailView(order.getOrderNo(), order.getOperatorName(), order.getType().name(),
+                order.getStatus(), order.getRemark(), order.getCreatedAt(), order.getCompletedAt(),
+                view.expectedTotal(), view.receivedTotal(), view.progress(), view.items(), histories);
+    }
+
+    private String trackingNo(String orderNo, int index) {
+        return orderNo + "-T" + String.format("%03d", index);
+    }
+
+    private String effectiveTrackingNo(InboundOrderItem item) {
+        return item.getTrackingNo() == null
+                ? trackingNo(item.getOrder().getOrderNo(), item.getId() == null ? 0 : item.getId().intValue())
+                : item.getTrackingNo();
     }
 
     private OrderSummaryView inboundSummary(InboundOrder order) {

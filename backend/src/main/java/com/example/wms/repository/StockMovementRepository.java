@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 public interface StockMovementRepository extends JpaRepository<StockMovement, Long> {
     boolean existsByProductId(Long productId);
     List<StockMovement> findTop200ByOrderByMovementTimeDesc();
+    List<StockMovement> findBySourceNoOrderByMovementTimeDesc(String sourceNo);
 
     @Query("select coalesce(sum(m.quantity), 0) from StockMovement m where m.type = com.example.wms.domain.enums.MovementType.INBOUND and m.movementTime >= :start")
     long todayInbound(LocalDateTime start);

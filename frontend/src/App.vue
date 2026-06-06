@@ -53,11 +53,51 @@
             <div class="head-actions"><button class="primary" @click="openView('inbound-create')">{{ labels.createInbound }}</button><button @click="loadInboundOrders">{{ text.refresh }}</button></div>
           </div>
           <div class="cards">
-            <article v-for="o in inboundOrders" :key="o.id" class="location-card">
+            <article v-for="o in inboundOrders" :key="o.id" class="location-card clickable" @click="openOrderDetail(o.orderNo)">
               <b>{{ o.orderNo }}</b>
               <span>{{ typeName(o.type) }} / {{ orderStatus(o.status) }}</span>
               <em>{{ o.operatorName || '-' }} / {{ o.itemCount || 0 }} SKU</em>
             </article>
+          </div>
+        </section>
+
+        <section v-if="view === 'inbound-detail'" class="panel order-detail-panel">
+          <div class="panel-head">
+            <h2>{{ labels.orderDetail }} {{ inboundOrderDetail?.orderNo || '' }}</h2>
+            <div class="head-actions">
+              <button v-if="inboundOrderDetail?.status === 'CREATED'" class="primary" @click="openReceiveOrder(inboundOrderDetail.orderNo)">{{ labels.receiving }}</button>
+              <button @click="openView('inbound-orders')">{{ text.back }}</button>
+            </div>
+          </div>
+          <div v-if="inboundOrderDetail" class="detail-grid">
+            <section class="detail-column">
+              <h3>{{ labels.orderBasic }}</h3>
+              <div class="detail-kv"><span>{{ labels.inboundNo }}</span><b>{{ inboundOrderDetail.orderNo }}</b></div>
+              <div class="detail-kv"><span>{{ labels.orderType }}</span><b>{{ typeName(inboundOrderDetail.type) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.status }}</span><b>{{ orderStatus(inboundOrderDetail.status) }}</b></div>
+              <div class="detail-kv"><span>{{ labels.operator }}</span><b>{{ inboundOrderDetail.supplier || '-' }}</b></div>
+              <div class="detail-kv"><span>{{ labels.progress }}</span><b>{{ inboundOrderDetail.receivedTotal }}/{{ inboundOrderDetail.expectedTotal }} / {{ inboundOrderDetail.progress }}%</b></div>
+              <div class="detail-kv"><span>{{ labels.remark }}</span><b>{{ inboundOrderDetail.remark || '-' }}</b></div>
+            </section>
+            <section class="detail-column">
+              <h3>{{ labels.productInfo }}</h3>
+              <article v-for="item in inboundOrderDetail.items" :key="item.itemId" class="detail-item">
+                <button class="link-button" @click="openReceiveByTracking(inboundOrderDetail.orderNo, item.trackingNo)">{{ item.trackingNo }}</button>
+                <b>{{ item.sku }} {{ item.productName }}</b>
+                <span>{{ item.modelSpec }} / {{ item.unitName }}</span>
+                <em>{{ item.warehouseName }} / {{ item.locationCode }}</em>
+                <footer>{{ labels.expectedQty }} {{ item.expectedQuantity }} / {{ labels.receivedQty }} {{ item.receivedQuantity }} / {{ labels.remainingQty }} {{ item.remainingQuantity }}</footer>
+              </article>
+            </section>
+            <section class="detail-column">
+              <h3>{{ labels.orderHistory }}</h3>
+              <article v-for="(h, index) in inboundOrderDetail.histories" :key="index" class="history-item">
+                <b>{{ historyName(h.operationType) }}</b>
+                <span>{{ formatTime(h.operationTime) }}</span>
+                <em>{{ h.operatorName || '-' }}</em>
+                <p>{{ h.remark }}</p>
+              </article>
+            </section>
           </div>
         </section>
 
@@ -197,6 +237,7 @@
           <section v-if="inboundOrder" class="item-list receive-items">
             <article v-for="item in inboundOrder.items" :key="item.itemId" :class="['receive-card', item.receiveStatus.toLowerCase()]">
               <div><b>{{ item.sku }} {{ item.productName }}</b><span>{{ receiveStatusName(item.receiveStatus) }}</span></div>
+              <button class="link-button tracking-button" @click="selectTracking(item)">{{ item.trackingNo }}</button>
               <p>{{ item.modelSpec }} / {{ item.unitName }}</p>
               <footer>{{ labels.expectedQty }} {{ item.expectedQuantity }} / {{ labels.receivedQty }} {{ item.receivedQuantity }} / {{ labels.remainingQty }} {{ item.remainingQuantity }}</footer>
             </article>
@@ -302,6 +343,10 @@ const labels = {
   removeItem: '\u5220\u9664',
   submitOrder: '\u63d0\u4ea4\u8ba2\u5355',
   product: '\u5546\u54c1',
+  orderDetail: '\u8ba2\u5355\u8be6\u60c5',
+  orderBasic: '\u8ba2\u5355\u57fa\u672c\u4fe1\u606f',
+  productInfo: '\u5546\u54c1\u4fe1\u606f',
+  orderHistory: '\u8ba2\u5355\u64cd\u4f5c\u5386\u53f2',
   shelfCreate: '\u521b\u5efa\u8d27\u67b6',
   warehouse: '\u6240\u5c5e\u4ed3\u5e93',
   shelfCode: '\u8d27\u67b6\u5927\u6807\u8bc6\u53f7',
@@ -370,7 +415,9 @@ const inboundOrders = ref([])
 const outboundOrders = ref([])
 const dashboard = ref({})
 const inboundOrder = ref(null)
+const inboundOrderDetail = ref(null)
 const activeReceiveOrderNo = ref('')
+const activeDetailOrderNo = ref('')
 const shelfPreview = ref([])
 const qtyMode = ref('fixed')
 const errorField = ref('')
@@ -407,7 +454,7 @@ const currentOrderTypes = computed(() => isInboundCreate.value
       { value: 'INVENTORY_LOSS', label: '\u76d8\u4e8f\u51fa\u5e93' }
     ])
 const placeholderView = computed(() => {
-  if (['home', 'inbound-orders', 'outbound-orders', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow'].includes(view.value)) return ''
+  if (['home', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'inbound-create', 'outbound-create', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow'].includes(view.value)) return ''
   return currentSubmodules.value.find(s => s.key === view.value)?.label || ''
 })
 const overviewCards = computed(() => [
@@ -446,20 +493,21 @@ function toggleModule(key) {
   activeModule.value = activeModule.value === key ? '' : key
 }
 function moduleForView(key) {
+  if (key === 'inbound-detail') return modules.find(m => m.key === 'inbound')
   return modules.find(m => m.subs.some(sub => sub.key === key))
 }
 function routeForView(key, orderNo = '') {
   const owner = moduleForView(key)
   if (!owner) return '/'
-  const suffix = key === 'receiving' && orderNo ? `/${encodeURIComponent(orderNo)}` : ''
+  const suffix = (key === 'receiving' || key === 'inbound-detail') && orderNo ? `/${encodeURIComponent(orderNo)}` : ''
   return `/modules/${owner.key}/${key}${suffix}`
 }
 function viewFromRoute() {
   const parts = window.location.pathname.split('/').filter(Boolean)
   if (parts[0] !== 'modules' || parts.length < 3) return { key: 'home', orderNo: '' }
   const owner = modules.find(m => m.key === parts[1])
-  const key = owner?.subs.some(sub => sub.key === parts[2]) ? parts[2] : 'home'
-  return { key, orderNo: key === 'receiving' && parts[3] ? decodeURIComponent(parts[3]) : '' }
+  const key = owner?.subs.some(sub => sub.key === parts[2]) || parts[2] === 'inbound-detail' ? parts[2] : 'home'
+  return { key, orderNo: (key === 'receiving' || key === 'inbound-detail') && parts[3] ? decodeURIComponent(parts[3]) : '' }
 }
 async function loadView(key) {
   if (!user.value) return
@@ -468,6 +516,7 @@ async function loadView(key) {
   if (key === 'location-query') await loadLocations()
   if (key === 'stock-query') await loadStocks()
   if (key === 'stock-flow') await loadMovements()
+  if (key === 'inbound-detail' && activeDetailOrderNo.value) await loadOrderDetail(activeDetailOrderNo.value)
   if (key === 'receiving') {
     if (activeReceiveOrderNo.value) await loadReceiveOrder(activeReceiveOrderNo.value)
     else nextTick(() => focusField('orderNo'))
@@ -482,6 +531,7 @@ async function activateView(key, updateHistory = true, orderNo = '') {
     if (!orderNo) clearReceiveState()
   }
   else activeReceiveOrderNo.value = ''
+  activeDetailOrderNo.value = key === 'inbound-detail' ? orderNo : ''
   if (updateHistory) window.history.pushState({}, '', routeForView(key, orderNo))
   await loadView(key)
 }
@@ -495,10 +545,21 @@ async function openReceivingEntry() {
 async function openReceiveOrder(orderNo) {
   await activateView('receiving', true, orderNo)
 }
+async function openOrderDetail(orderNo) {
+  await activateView('inbound-detail', true, orderNo)
+}
+async function openReceiveByTracking(orderNo, trackingNo) {
+  await openReceiveOrder(orderNo)
+  if (trackingNo) {
+    receiveForm.productCode = trackingNo
+    await scanProduct()
+  }
+}
 function openHome(replace = false) {
   view.value = 'home'
   activeModule.value = ''
   activeReceiveOrderNo.value = ''
+  activeDetailOrderNo.value = ''
   window.history[replace ? 'replaceState' : 'pushState']({}, '', '/')
 }
 async function syncRoute() {
@@ -506,6 +567,7 @@ async function syncRoute() {
   await activateView(route.key, false, route.orderNo)
 }
 async function loadInboundOrders() { inboundOrders.value = await api.get('/inbound') }
+async function loadOrderDetail(orderNo) { inboundOrderDetail.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`) }
 async function loadOutboundOrders() { outboundOrders.value = await api.get('/outbound') }
 async function loadWarehouses() { warehouses.value = await api.get('/warehouses') }
 async function loadProducts() { products.value = await api.get('/products') }
@@ -539,7 +601,8 @@ async function createOrder() {
       items: orderForm.items.map(({ productId, warehouseId, locationId, quantity }) => ({ productId, warehouseId, locationId, quantity: Number(quantity) }))
     })
     showToast(`\u8ba2\u5355 ${order.orderNo} \u521b\u5efa\u6210\u529f`)
-    await openView(isInboundCreate.value ? 'inbound-orders' : 'outbound-orders')
+    if (isInboundCreate.value) await openOrderDetail(order.orderNo)
+    else await openView('outbound-orders')
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
@@ -618,7 +681,7 @@ async function loadInboundOrder() {
   }
   if (inboundOrder.value?.orderNo === receiveForm.orderNo) return
   await runScan('orderNo', async () => {
-    const order = await api.get(`/inbound/${encodeURIComponent(receiveForm.orderNo)}`)
+    const order = await api.get(`/inbound/${encodeURIComponent(receiveForm.orderNo)}/receiving`)
     inboundOrder.value = order
     activeReceiveOrderNo.value = order.orderNo
     window.history.pushState({}, '', routeForView('receiving', order.orderNo))
@@ -629,7 +692,7 @@ async function loadInboundOrder() {
 async function loadReceiveOrder(orderNo) {
   try {
     receiveForm.orderNo = orderNo
-    inboundOrder.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`)
+    inboundOrder.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}/receiving`)
     activeReceiveOrderNo.value = inboundOrder.value.orderNo
     nextTick(() => focusField('locationCode'))
   } catch (e) {
@@ -706,12 +769,22 @@ function resetReceive() {
   if (view.value === 'receiving') window.history.replaceState({}, '', routeForView('receiving'))
   focusField('orderNo')
 }
+async function selectTracking(item) {
+  receiveForm.productCode = item.trackingNo
+  await scanProduct()
+}
 function clearReceiveState() {
   Object.assign(receiveForm, { orderNo: '', locationCode: '', productCode: '', quantity: 1 })
   Object.assign(scanResult, { location: null, product: null })
   inboundOrder.value = null
   activeReceiveOrderNo.value = ''
   qtyMode.value = 'fixed'
+}
+function formatTime(value) {
+  return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
+}
+function historyName(type) {
+  return { CREATE: '\u521b\u5efa\u8ba2\u5355', INBOUND: '\u6536\u8d27\u5165\u5e93', COMPLETE: '\u5b8c\u6210\u8ba2\u5355' }[type] || type
 }
 function focusField(field) { nextTick(() => refs[field]?.value?.focus()) }
 function focusNext(field) {

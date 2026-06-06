@@ -3,6 +3,7 @@ package com.example.wms.controller;
 import com.example.wms.common.ApiResponse;
 import com.example.wms.domain.InventoryCheck;
 import com.example.wms.domain.StockMovement;
+import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
@@ -45,8 +46,13 @@ public class InventoryController {
     public ApiResponse<List<OrderSummaryView>> inboundOrders() { return ApiResponse.ok(inventoryService.inboundOrders()); }
 
     @GetMapping("/inbound/{orderNo}")
-    public ApiResponse<InboundOrderView> inboundOrder(@org.springframework.web.bind.annotation.PathVariable String orderNo) {
+    public ApiResponse<InboundOrderDetailView> inboundOrder(@org.springframework.web.bind.annotation.PathVariable String orderNo) {
         return ApiResponse.ok(inventoryService.getInboundOrder(orderNo));
+    }
+
+    @GetMapping("/inbound/{orderNo}/receiving")
+    public ApiResponse<InboundOrderView> receivableInboundOrder(@org.springframework.web.bind.annotation.PathVariable String orderNo) {
+        return ApiResponse.ok(inventoryService.getReceivableInboundOrder(orderNo));
     }
 
     @PostMapping("/inbound/receive")
