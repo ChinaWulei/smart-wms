@@ -134,8 +134,9 @@ public class InventoryController {
 
     @PostMapping("/outbound-orders/{id}/assign-picking")
     public ApiResponse<OutboundOrderDetailView> assignPicking(
-            @PathVariable Long id, @RequestParam(required = false) String operatorName) {
-        return ApiResponse.ok(inventoryService.assignPicking(id, operatorName));
+            @PathVariable Long id, @RequestParam(required = false) String operatorName,
+            @RequestParam(defaultValue = "false") boolean continueOnShortage) {
+        return ApiResponse.ok(inventoryService.assignPicking(id, operatorName, continueOnShortage));
     }
 
     @PostMapping("/outbound-orders/{id}/picking/complete")

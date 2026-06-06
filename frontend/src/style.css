@@ -97,6 +97,7 @@ h1, h2, h3, p { margin: 0; }
 .status-tag.receiving { color: #175cd3; background: #eaf2ff; }
 .status-tag.received { color: #16653f; background: #d9f5e6; }
 .status-tag.allocated { color: #6941c6; background: #f1eaff; }
+.status-tag.not_enough_inv { color: #b42318; background: #fee4e2; }
 .status-tag.ready_to_pick { color: #0e7090; background: #dff6fc; }
 .status-tag.picking { color: #175cd3; background: #eaf2ff; }
 .status-tag.picked { color: #6941c6; background: #f1eaff; }
@@ -124,6 +125,8 @@ h1, h2, h3, p { margin: 0; }
 .detail-column { display: grid; align-content: start; gap: 10px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #f8fafc; }
 .detail-column h3 { font-size: 16px; }
 .detail-kv, .detail-item, .history-item { display: grid; gap: 5px; border: 1px solid #edf2f7; border-radius: 8px; padding: 9px; background: #fff; }
+.shortage-detail { border-color: #fda29b; background: #fff5f4; }
+.shortage-detail b { color: #b42318; }
 .detail-kv span, .detail-item span, .history-item span, .history-item em { color: #667085; font-size: 12px; font-style: normal; }
 .detail-item em, .detail-item footer, .history-item p { color: #24745a; font-size: 13px; font-style: normal; margin: 0; }
 .empty-state { min-height: 120px; display: grid; place-items: center; color: #667085; background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px; }
@@ -174,6 +177,8 @@ label.disabled { opacity: .78; }
 .location-cube.selected { outline: 3px solid #1769aa; outline-offset: 3px; z-index: 6; }
 .location-cube span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
 .location-cube b { font-size: 14px; }
+.location-cube.empty { color: #475467; border: 2px dashed #98a2b3; background: rgba(248, 250, 252, .78); box-shadow: 8px 8px 0 rgba(174, 184, 195, .55), 8px 8px 14px rgba(15,23,42,.12); }
+.location-cube.empty .empty-label { color: #667085; font-size: 11px; }
 .location-cube.occupied { color: #fff; background: #2e9d62; box-shadow: 8px 8px 0 #1c7043, 8px 8px 14px rgba(15,23,42,.2); }
 .location-cube.full { color: #fff; background: #f0a020; box-shadow: 8px 8px 0 #b66e00, 8px 8px 14px rgba(15,23,42,.2); }
 .location-cube.disabled { color: #fff; background: #98a2b3; box-shadow: 8px 8px 0 #667085, 8px 8px 14px rgba(15,23,42,.2); }

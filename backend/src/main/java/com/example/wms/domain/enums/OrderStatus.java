@@ -6,6 +6,7 @@ public enum OrderStatus {
     RECEIVING,
     RECEIVED,
     ALLOCATED,
+    NOT_ENOUGH_INV,
     READY_TO_PICK,
     PICKING,
     PICKED,

@@ -173,39 +173,119 @@ public class InventoryService {
         if (!isInQueue(order.getStatus())) {
             throw new BizException("Only In Queue outbound orders can generate a pick list");
         }
-        Map<OutboundStockKey, Integer> requiredByStock = requiredStock(order);
         Map<OutboundStockKey, Stock> lockedStocks = new LinkedHashMap<>();
-        for (Map.Entry<OutboundStockKey, Integer> entry : requiredByStock.entrySet()) {
-            OutboundStockKey key = entry.getKey();
-            Stock stock = stockRepository.findForUpdate(key.productId(), key.warehouseId(), key.locationId())
-                    .orElseThrow(() -> new BizException("Current inventory is insufficient for outbound"));
-            if (n(stock.getQuantity()) - n(stock.getAllocatedQuantity()) < entry.getValue()) {
-                throw new BizException("Current inventory is insufficient for outbound");
+        for (OutboundStockKey key : requiredStock(order).keySet()) {
+            stockRepository.findForUpdate(key.productId(), key.warehouseId(), key.locationId())
+                    .ifPresent(stock -> lockedStocks.put(key, stock));
+        }
+        Map<OutboundStockKey, Integer> remainingAvailable = new LinkedHashMap<>();
+        lockedStocks.forEach((key, stock) -> remainingAvailable.put(
+                key, Math.max(0, n(stock.getQuantity()) - n(stock.getAllocatedQuantity()))));
+        List<String> shortages = new java.util.ArrayList<>();
+        for (OutboundOrderItem item : order.getItems()) {
+            OutboundStockKey key = stockKey(item);
+            int required = n(item.getQuantity());
+            int allocated = Math.min(required, remainingAvailable.getOrDefault(key, 0));
+            item.setAllocatedQuantity(allocated);
+            remainingAvailable.put(key, remainingAvailable.getOrDefault(key, 0) - allocated);
+            if (allocated < required) {
+                shortages.add(item.getProduct().getSku() + " " + item.getProduct().getName()
+                        + ": shortage " + (required - allocated) + " item(s)");
             }
-            lockedStocks.put(key, stock);
         }
         lockedStocks.forEach((key, stock) -> {
-            stock.setAllocatedQuantity(n(stock.getAllocatedQuantity()) + requiredByStock.get(key));
+            int allocated = order.getItems().stream()
+                    .filter(item -> stockKey(item).equals(key))
+                    .mapToInt(item -> n(item.getAllocatedQuantity()))
+                    .sum();
+            stock.setAllocatedQuantity(n(stock.getAllocatedQuantity()) + allocated);
             stockRepository.save(stock);
         });
-        order.getItems().forEach(item -> item.setAllocatedQuantity(n(item.getQuantity())));
-        order.setStatus(OrderStatus.ALLOCATED);
         order.setAllocatedAt(LocalDateTime.now());
         order.setAllocatedBy(operatorName);
+        if (shortages.isEmpty()) {
+            order.setStatus(OrderStatus.ALLOCATED);
+            order.setShortageAt(null);
+            order.setShortageBy(null);
+            order.setShortageDetails(null);
+        } else {
+            order.setStatus(OrderStatus.NOT_ENOUGH_INV);
+            order.setShortageAt(LocalDateTime.now());
+            order.setShortageBy(operatorName);
+            order.setShortageDetails(String.join("; ", shortages));
+        }
         return outboundDetail(outboundOrderRepository.save(order));
     }
 
     @Transactional
-    public OutboundOrderDetailView assignPicking(Long id, String operatorName) {
+    public OutboundOrderDetailView assignPicking(Long id, String operatorName, boolean continueOnShortage) {
         OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new BizException("Outbound order does not exist"));
-        if (order.getStatus() != OrderStatus.ALLOCATED) {
-            throw new BizException("Only Allocated outbound orders can be assigned for picking");
+        if (order.getStatus() == OrderStatus.NOT_ENOUGH_INV) {
+            if (!continueOnShortage) {
+                throw new BizException("Inventory is insufficient. Confirm whether to create a back outbound order and continue.");
+            }
+            if (!splitShortageToBackOrder(order, operatorName)) {
+                order.setStatus(OrderStatus.CANCELLED);
+                order.setCancelledAt(LocalDateTime.now());
+                order.setCancelledBy(operatorName);
+                order.setAssignedAt(LocalDateTime.now());
+                order.setAssignedBy(operatorName);
+                return outboundDetail(outboundOrderRepository.save(order));
+            }
+        } else if (order.getStatus() != OrderStatus.ALLOCATED) {
+            throw new BizException("Only Allocated or Not Enough Inv outbound orders can be assigned for picking");
         }
         order.setStatus(OrderStatus.READY_TO_PICK);
         order.setAssignedAt(LocalDateTime.now());
         order.setAssignedBy(operatorName);
         return outboundDetail(outboundOrderRepository.save(order));
+    }
+
+    private boolean splitShortageToBackOrder(OutboundOrder order, String operatorName) {
+        OutboundOrder backOrder = copyBackOrderHeader(order, operatorName);
+        List<OutboundOrderItem> currentItems = new java.util.ArrayList<>(order.getItems());
+        for (OutboundOrderItem item : currentItems) {
+            int shortage = n(item.getQuantity()) - n(item.getAllocatedQuantity());
+            if (shortage > 0) {
+                backOrder.getItems().add(copyBackOrderItem(backOrder, item, shortage));
+            }
+            if (n(item.getAllocatedQuantity()) <= 0) {
+                order.getItems().remove(item);
+            } else {
+                item.setQuantity(n(item.getAllocatedQuantity()));
+            }
+        }
+        OutboundOrder savedBackOrder = outboundOrderRepository.save(backOrder);
+        order.setBackOrderNo(savedBackOrder.getOrderNo());
+        return !order.getItems().isEmpty();
+    }
+
+    private OutboundOrder copyBackOrderHeader(OutboundOrder source, String operatorName) {
+        OutboundOrder backOrder = new OutboundOrder();
+        backOrder.setOrderNo("BACKOUT" + DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS").format(LocalDateTime.now()));
+        backOrder.setType(source.getType());
+        backOrder.setStatus(OrderStatus.IN_QUEUE);
+        backOrder.setOperatorName(operatorName);
+        backOrder.setReceiverName(source.getReceiverName());
+        backOrder.setReceiverPhone(source.getReceiverPhone());
+        backOrder.setAddress(source.getAddress());
+        backOrder.setReason(source.getReason());
+        backOrder.setTrackingNo(source.getTrackingNo());
+        backOrder.setRemark("Back outbound order for " + source.getOrderNo());
+        return backOrder;
+    }
+
+    private OutboundOrderItem copyBackOrderItem(OutboundOrder backOrder, OutboundOrderItem source, int quantity) {
+        OutboundOrderItem item = new OutboundOrderItem();
+        item.setOrder(backOrder);
+        item.setProduct(source.getProduct());
+        item.setWarehouse(source.getWarehouse());
+        item.setLocation(source.getLocation());
+        item.setQuantity(quantity);
+        item.setAllocatedQuantity(0);
+        item.setPickedQuantity(0);
+        return item;
     }
 
     @Transactional
@@ -281,14 +361,11 @@ public class InventoryService {
                 .forEach(item -> requiredByStock.merge(new OutboundStockKey(
                         item.getProduct().getId(), item.getWarehouse().getId(), item.getLocation().getId()),
                         n(item.getQuantity()), Integer::sum));
-        for (Map.Entry<OutboundStockKey, Integer> entry : requiredByStock.entrySet()) {
-            OutboundStockKey key = entry.getKey();
-            Stock stock = stockRepository.findForUpdate(key.productId(), key.warehouseId(), key.locationId()).orElse(null);
-            if (stock == null || n(stock.getQuantity()) < entry.getValue()) {
-                throw new BizException("当前库存不足，无法出库");
-            }
-        }
         return requiredByStock;
+    }
+
+    private OutboundStockKey stockKey(OutboundOrderItem item) {
+        return new OutboundStockKey(item.getProduct().getId(), item.getWarehouse().getId(), item.getLocation().getId());
     }
 
     @Transactional
@@ -657,6 +734,14 @@ public class InventoryService {
         }).toList();
         List<OrderHistoryView> histories = new java.util.ArrayList<>();
         histories.add(new OrderHistoryView(order.getCreatedAt(), "CREATE", order.getOperatorName(), "创建出库订单"));
+        if (order.getShortageAt() != null) {
+            histories.add(new OrderHistoryView(order.getShortageAt(), "SHORTAGE",
+                    order.getShortageBy(), order.getShortageDetails()));
+        }
+        if (order.getBackOrderNo() != null) {
+            histories.add(new OrderHistoryView(order.getAssignedAt(), "BACK_ORDER",
+                    order.getAssignedBy(), "Created back outbound order " + order.getBackOrderNo()));
+        }
         if (order.getPickingStartedAt() != null) {
             histories.add(new OrderHistoryView(order.getPickingStartedAt(), "PICKING",
                     order.getPickingStartedBy(), "开始拣货"));
@@ -677,6 +762,7 @@ public class InventoryService {
         return new OutboundOrderDetailView(order.getId(), order.getOrderNo(), order.getType().name(),
                 order.getStatus(), order.getOperatorName(), order.getReceiverName(), order.getReceiverPhone(),
                 order.getAddress(), order.getReason(), order.getTrackingNo(), order.getRemark(),
+                order.getShortageDetails(), order.getBackOrderNo(),
                 order.getCreatedAt(), order.getAllocatedAt(), order.getAssignedAt(),
                 order.getPickingStartedAt(), order.getPickedAt(),
                 order.getCompletedAt(), order.getCancelledAt(),

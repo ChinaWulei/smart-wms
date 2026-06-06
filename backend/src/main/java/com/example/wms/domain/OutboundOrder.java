@@ -30,6 +30,11 @@ public class OutboundOrder extends BaseEntity {
     private String trackingNo;
     private LocalDateTime allocatedAt;
     private String allocatedBy;
+    private LocalDateTime shortageAt;
+    private String shortageBy;
+    @Column(length = 2000)
+    private String shortageDetails;
+    private String backOrderNo;
     private LocalDateTime assignedAt;
     private String assignedBy;
     private LocalDateTime pickingStartedAt;
@@ -66,6 +71,14 @@ public class OutboundOrder extends BaseEntity {
     public void setAllocatedAt(LocalDateTime allocatedAt) { this.allocatedAt = allocatedAt; }
     public String getAllocatedBy() { return allocatedBy; }
     public void setAllocatedBy(String allocatedBy) { this.allocatedBy = allocatedBy; }
+    public LocalDateTime getShortageAt() { return shortageAt; }
+    public void setShortageAt(LocalDateTime shortageAt) { this.shortageAt = shortageAt; }
+    public String getShortageBy() { return shortageBy; }
+    public void setShortageBy(String shortageBy) { this.shortageBy = shortageBy; }
+    public String getShortageDetails() { return shortageDetails; }
+    public void setShortageDetails(String shortageDetails) { this.shortageDetails = shortageDetails; }
+    public String getBackOrderNo() { return backOrderNo; }
+    public void setBackOrderNo(String backOrderNo) { this.backOrderNo = backOrderNo; }
     public LocalDateTime getAssignedAt() { return assignedAt; }
     public void setAssignedAt(LocalDateTime assignedAt) { this.assignedAt = assignedAt; }
     public String getAssignedBy() { return assignedBy; }

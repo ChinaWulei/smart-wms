@@ -42,6 +42,7 @@ public class WmsDtos {
     public record OutboundOrderDetailView(Long id, String orderNo, String type, OrderStatus status,
                                           String operatorName, String receiverName, String receiverPhone,
                                           String address, String reason, String trackingNo, String remark,
+                                          String shortageDetails, String backOrderNo,
                                           LocalDateTime createdAt, LocalDateTime allocatedAt,
                                           LocalDateTime assignedAt, LocalDateTime pickingStartedAt,
                                           LocalDateTime pickedAt, LocalDateTime completedAt,
