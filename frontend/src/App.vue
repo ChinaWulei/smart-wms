@@ -539,13 +539,11 @@
             <label>{{ labels.warehouse }}
               <input :value="currentWarehouse?.code || '-'" disabled>
             </label>
-            <label>{{ labels.horizontalAngle }}
-              <input v-model.number="distributionRotation.z" type="range" min="-45" max="45">
-            </label>
-            <label>{{ labels.pitchAngle }}
-              <input v-model.number="distributionRotation.x" type="range" min="35" max="80">
-            </label>
-            <button @click="resetDistributionView">{{ labels.resetView }}</button>
+            <div class="distribution-level">
+              <span>{{ labels.currentLevel }}</span>
+              <b>{{ selectedDistributionShelf ? `${labels.area} ${selectedDistributionShelf.code}` : labels.warehouseOverview }}</b>
+            </div>
+            <button v-if="selectedDistributionShelf" @click="backToDistributionOverview">{{ labels.backToOverview }}</button>
           </div>
           <div class="distribution-legend">
             <span><i class="empty"></i>{{ labels.emptyLocation }}</span>
@@ -554,34 +552,45 @@
             <span><i class="disabled"></i>{{ labels.disabled }}</span>
           </div>
 
-          <div v-if="distributionShelves.length" class="warehouse-3d">
-            <article v-for="shelf in distributionShelves" :key="shelf.code" class="shelf-3d-card">
-              <header>
-                <div>
-                  <b>{{ shelf.code }}</b>
-                  <span>{{ shelf.locations.length }} {{ labels.locations }} / {{ shelf.emptyCount }} {{ labels.emptyLocations }}</span>
-                </div>
-                <strong>{{ shelf.totalQuantity }} {{ labels.pieces }}</strong>
-              </header>
-              <div class="scene-viewport">
-                <div class="scene-3d" :style="sceneStyle(shelf)">
-                  <button
-                    v-for="(location, index) in shelf.locations"
-                    :key="location.id"
-                    :class="['location-cube', distributionLocationClass(location), { selected: selectedDistributionLocation?.id === location.id }]"
-                    :style="location3dStyle(location, index)"
-                    :title="distributionLocationTitle(location)"
-                    @click="selectedDistributionLocation = location"
-                  >
-                    <span>{{ shortLocationCode(location.code) }}</span>
-                    <b v-if="locationStockTotal(location.code)">{{ locationStockTotal(location.code) }}</b>
-                    <b v-else class="empty-label">{{ labels.emptySlot }}</b>
-                  </button>
-                </div>
-              </div>
-            </article>
+          <div v-if="distributionShelves.length && !selectedDistributionShelf" class="warehouse-overview">
+            <button
+              v-for="shelf in distributionShelves"
+              :key="shelf.code"
+              class="warehouse-area"
+              :style="{ '--usage': `${shelf.utilization}%` }"
+              @click="openDistributionShelf(shelf)"
+            >
+              <span>{{ labels.area }}</span>
+              <b>{{ shelf.code }}</b>
+              <em>{{ shelf.totalQuantity }} {{ labels.pieces }}</em>
+              <small>{{ shelf.locations.length - shelf.emptyCount }}/{{ shelf.locations.length }} {{ labels.occupiedSlots }}</small>
+              <i><u></u></i>
+            </button>
           </div>
-          <div v-else class="empty-state">{{ labels.noDistributionData }}</div>
+
+          <section v-else-if="selectedDistributionShelf" class="area-detail">
+            <div class="area-detail-head">
+              <div>
+                <span>{{ labels.area }}</span>
+                <h3>{{ selectedDistributionShelf.code }}</h3>
+              </div>
+              <p>{{ selectedDistributionShelf.locations.length }} {{ labels.locations }} / {{ selectedDistributionShelf.emptyCount }} {{ labels.emptyLocations }}</p>
+            </div>
+            <div class="location-grid">
+              <button
+                v-for="location in selectedDistributionShelf.locations"
+                :key="location.id"
+                :class="['location-cell', distributionLocationClass(location), { selected: selectedDistributionLocation?.id === location.id }]"
+                :title="distributionLocationTitle(location)"
+                @click="selectedDistributionLocation = location"
+              >
+                <b>{{ shortLocationCode(location.code) }}</b>
+                <span v-if="locationStockTotal(location.code)">{{ locationStockTotal(location.code) }} {{ labels.pieces }}</span>
+                <span v-else>{{ labels.emptySlot }}</span>
+              </button>
+            </div>
+          </section>
+          <div v-if="!distributionShelves.length" class="empty-state">{{ labels.noDistributionData }}</div>
 
           <aside v-if="selectedDistributionLocation" class="location-inspector">
             <div class="panel-head">
@@ -739,8 +748,8 @@ const labels = {
   thisQty: '\u672c\u6b21\u6536\u8d27\u6570\u91cf',
   stockQuery: '\u5e93\u5b58\u67e5\u8be2',
   stockFlow: '\u5e93\u5b58\u6d41\u6c34',
-  stockDistribution: '\u5e93\u5b58\u5206\u5e03 3D \u89c6\u56fe',
-  stockDistributionHint: '\u6309\u4ed3\u5e93\u548c\u8d27\u67b6\u67e5\u770b\u8d27\u4f4d\u5e93\u5b58\u5360\u7528\u60c5\u51b5\uff0c\u70b9\u51fb\u8d27\u4f4d\u53ef\u67e5\u770b\u5546\u54c1\u660e\u7ec6',
+  stockDistribution: '\u4ed3\u5e93\u5e93\u5b58\u4fef\u89c6\u56fe',
+  stockDistributionHint: '\u4ece\u4ed3\u5e93\u4fef\u89c6\u56fe\u9009\u62e9\u533a\u57df\uff0c\u8fdb\u5165\u540e\u67e5\u770b 1-1-1 \u7b49\u683c\u4f4d\u7684\u5e93\u5b58\u548c\u7a7a\u4f4d\u60c5\u51b5',
   horizontalAngle: '\u6c34\u5e73\u89c6\u89d2',
   pitchAngle: '\u4fef\u4ef0\u89c6\u89d2',
   resetView: '\u91cd\u7f6e\u89c6\u89d2',
@@ -764,7 +773,12 @@ const labels = {
   shortageDetails: '\u7f3a\u8d27\u660e\u7ec6',
   backOrderNo: '\u56de\u8865\u51fa\u5e93\u5355',
   emptyLocations: '\u4e2a\u7a7a\u4f4d',
-  emptySlot: '\u7a7a\u8d27\u4f4d'
+  emptySlot: '\u7a7a\u8d27\u4f4d',
+  currentLevel: '\u5f53\u524d\u89c6\u56fe',
+  warehouseOverview: '\u4ed3\u5e93\u4fef\u89c6\u56fe',
+  area: '\u533a\u57df',
+  occupiedSlots: '\u683c\u5df2\u4f7f\u7528',
+  backToOverview: '\u8fd4\u56de\u4ed3\u5e93\u4fef\u89c6\u56fe'
 }
 const modules = [
   module('order', '\u8ba2\u5355\u7ba1\u7406', '\u5355', [['order-search', labels.orderSearch]]),
@@ -822,13 +836,15 @@ const englishLabels = {
   searchPickingPlaceholder: 'Enter outbound order number', markPicked: 'Mark Picked',
   shortageDetails: 'Shortage Details', backOrderNo: 'Back Outbound Order',
   emptyLocations: 'empty', emptySlot: 'Empty',
+  currentLevel: 'Current View', warehouseOverview: 'Warehouse Overview', area: 'Area',
+  occupiedSlots: 'slots occupied', backToOverview: 'Back to Overview',
   shelfCreate: 'Create Shelf', shelfName: 'Shelf Name', previewLocation: 'Preview Locations', generate: 'Generate',
   willGenerate: 'Locations to generate', locationQuery: 'Location Query', available: 'Available / In Use',
   full: 'Full', disabled: 'Disabled', changeOrder: 'Change Order', fixedQty: 'Fixed 1 Item',
   customQty: 'Custom Quantity', receivingNow: 'Receiving...', autoReceiveHint: 'Scan to receive a fixed quantity, or enter a custom quantity and press Enter',
   scanResult: 'Current Scan Result', productName: 'Product Name', spec: 'Specification', unit: 'Unit',
-  thisQty: 'Quantity This Time', stockDistribution: '3D Inventory Distribution',
-  stockDistributionHint: 'View inventory occupancy by warehouse and shelf; select a location for item details',
+  thisQty: 'Quantity This Time', stockDistribution: 'Warehouse Inventory Overview',
+  stockDistributionHint: 'Select an area from the top-down warehouse view, then inspect inventory in cells such as 1-1-1',
   horizontalAngle: 'Horizontal Angle', pitchAngle: 'Pitch Angle', resetView: 'Reset View',
   emptyLocation: 'Empty Location', occupiedLocation: 'Occupied', fullLocation: 'Full',
   locations: 'locations', pieces: 'items', noDistributionData: 'No location data for this warehouse',
@@ -883,7 +899,7 @@ const outboundOrders = ref([])
 const orderSearchResults = ref([])
 const distributionWarehouseId = ref(null)
 const selectedDistributionLocation = ref(null)
-const distributionRotation = reactive({ x: 58, z: -25 })
+const selectedDistributionShelfCode = ref('')
 const dashboard = ref({})
 const inboundOrder = ref(null)
 const inboundOrderDetail = ref(null)
@@ -933,14 +949,22 @@ const distributionShelves = computed(() => {
       if (!groups.has(code)) groups.set(code, [])
       groups.get(code).push(location)
     })
-  return [...groups.entries()].map(([code, shelfLocations]) => ({
-    code,
-    locations: shelfLocations,
-    totalQuantity: shelfLocations.reduce((total, location) => total + locationStockTotal(location.code), 0),
-    emptyCount: shelfLocations.filter(location => locationStockTotal(location.code) === 0).length,
-    dimensions: shelfDimensions(shelfLocations)
-  }))
+  return [...groups.entries()].map(([code, shelfLocations]) => {
+    const sortedLocations = [...shelfLocations].sort(compareLocationPosition)
+    const totalCapacity = sortedLocations.reduce((total, location) => total + Number(location.capacity || 0), 0)
+    const totalQuantity = sortedLocations.reduce((total, location) => total + locationStockTotal(location.code), 0)
+    return {
+      code,
+      locations: sortedLocations,
+      totalQuantity,
+      emptyCount: sortedLocations.filter(location => locationStockTotal(location.code) === 0).length,
+      utilization: totalCapacity ? Math.min(100, Math.round(totalQuantity / totalCapacity * 100)) : 0
+    }
+  })
 })
+const selectedDistributionShelf = computed(() =>
+  distributionShelves.value.find(shelf => shelf.code === selectedDistributionShelfCode.value) || null
+)
 const isInboundCreate = computed(() => view.value === 'inbound-create')
 const currentOrderTypes = computed(() => isInboundCreate.value
   ? [
@@ -1031,6 +1055,7 @@ function clearWarehouseData() {
   inboundOrderDetail.value = null
   outboundOrderDetail.value = null
   selectedDistributionLocation.value = null
+  selectedDistributionShelfCode.value = ''
 }
 function toggleModule(key) {
   activeModule.value = activeModule.value === key ? '' : key
@@ -1328,6 +1353,7 @@ async function loadStockDistribution() {
     distributionWarehouseId.value = selectedWarehouseId.value
   }
   selectedDistributionLocation.value = null
+  selectedDistributionShelfCode.value = ''
 }
 function parseLocationPosition(location, index = 0) {
   const match = String(location.code || '').match(/-(\d+)-(\d+)-(\d+)$/)
@@ -1335,24 +1361,10 @@ function parseLocationPosition(location, index = 0) {
     ? { x: Number(match[1]), y: Number(match[2]), z: Number(match[3]) }
     : { x: (index % 4) + 1, y: Math.floor(index / 8) + 1, z: (Math.floor(index / 4) % 2) + 1 }
 }
-function shelfDimensions(shelfLocations) {
-  return shelfLocations.reduce((size, location, index) => {
-    const position = parseLocationPosition(location, index)
-    return { x: Math.max(size.x, position.x), y: Math.max(size.y, position.y), z: Math.max(size.z, position.z) }
-  }, { x: 1, y: 1, z: 1 })
-}
-function sceneStyle(shelf) {
-  return {
-    width: `${Math.max(300, shelf.dimensions.x * 78 + shelf.dimensions.y * 32)}px`,
-    height: `${Math.max(220, shelf.dimensions.z * 64 + shelf.dimensions.y * 24)}px`,
-    transform: `rotateX(${distributionRotation.x}deg) rotateZ(${distributionRotation.z}deg)`
-  }
-}
-function location3dStyle(location, index) {
-  const position = parseLocationPosition(location, index)
-  return {
-    transform: `translate3d(${(position.x - 1) * 76}px, ${-(position.z - 1) * 62}px, ${(position.y - 1) * 58}px)`
-  }
+function compareLocationPosition(first, second) {
+  const a = parseLocationPosition(first)
+  const b = parseLocationPosition(second)
+  return a.x - b.x || a.y - b.y || a.z - b.z
 }
 function locationStocks(code) { return stockByLocation.value[code] || [] }
 function locationStockTotal(code) { return locationStocks(code).reduce((total, stock) => total + Number(stock.quantity || 0), 0) }
@@ -1375,8 +1387,13 @@ function shortLocationCode(code) {
   const parts = String(code).split('-')
   return parts.length > 3 ? parts.slice(-3).join('-') : code
 }
-function resetDistributionView() {
-  Object.assign(distributionRotation, { x: 58, z: -25 })
+function openDistributionShelf(shelf) {
+  selectedDistributionShelfCode.value = shelf.code
+  selectedDistributionLocation.value = null
+}
+function backToDistributionOverview() {
+  selectedDistributionShelfCode.value = ''
+  selectedDistributionLocation.value = null
 }
 function newOrderLine() {
   return { key: `${Date.now()}-${Math.random()}`, productId: null, productKeyword: '', showProductOptions: false, warehouseId: selectedWarehouseId.value, locationId: null, quantity: 1 }
