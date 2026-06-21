@@ -25,6 +25,7 @@ public class AiAssistantService {
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
     }
 
@@ -40,7 +41,8 @@ public class AiAssistantService {
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(properties.getServiceUrl() + "/chat"))
                     .timeout(Duration.ofSeconds(120))
-                    .header("Content-Type", "application/json")
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .header("Content-Type", "application/json; charset=UTF-8")
                     .header("Accept", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
