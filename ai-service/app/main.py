@@ -6,7 +6,7 @@ from typing import Annotated, Literal, TypedDict
 import httpx
 from fastapi import FastAPI, HTTPException
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
@@ -15,9 +15,8 @@ from pydantic import BaseModel, Field
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8080").rstrip("/")
 INTERNAL_TOKEN = os.getenv("AI_INTERNAL_TOKEN", "change-me")
-MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
-API_KEY = os.getenv("AI_API_KEY", "")
-BASE_URL = os.getenv("AI_BASE_URL", "").strip() or None
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
 RULES = (Path(__file__).resolve().parents[1] / "knowledge" / "wms_rules.md").read_text(encoding="utf-8")
 
 
@@ -44,13 +43,15 @@ class AgentState(TypedDict):
     report_id: int | None
 
 
-def model() -> ChatOpenAI | None:
+def model() -> ChatGoogleGenerativeAI | None:
     if not API_KEY:
         return None
-    options = {"model": MODEL, "api_key": API_KEY, "temperature": 0}
-    if BASE_URL:
-        options["base_url"] = BASE_URL
-    return ChatOpenAI(**options)
+    return ChatGoogleGenerativeAI(
+        model=MODEL,
+        google_api_key=API_KEY,
+        temperature=0,
+        max_retries=2,
+    )
 
 
 LLM = model()
@@ -132,7 +133,7 @@ def rules_agent(state: AgentState) -> dict:
             )),
             *state["messages"][-10:],
         ])
-        answer = str(response.content)
+        answer = response.text
     return {"answer": answer, "messages": [AIMessage(content=answer)]}
 
 
@@ -158,7 +159,7 @@ def analytics_agent(state: AgentState) -> dict:
             *state["messages"][-10:],
             SystemMessage(content=f"本次查询可用的 WMS 数据：\n{json.dumps(context, ensure_ascii=False)}"),
         ])
-        answer = str(response.content)
+        answer = response.text
     return {"answer": answer, "messages": [AIMessage(content=answer)]}
 
 
@@ -183,7 +184,7 @@ def report_agent(state: AgentState) -> dict:
             *state["messages"][-10:],
             SystemMessage(content=f"生成报表可使用的 WMS 数据：\n{json.dumps(context, ensure_ascii=False)}"),
         ])
-        analysis = str(response.content)
+        analysis = response.text
     report_id = save_report("AI 仓储运营报表", analysis, context)
     answer = f"报表已生成，可以点击下方链接下载 PDF。\n\n{analysis}"
     return {
