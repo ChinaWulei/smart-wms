@@ -1,6 +1,6 @@
 # 智能仓储管理系统 WMS
 
-技术栈：Spring Boot 3、Spring Data JPA、MySQL、Vue 3、Vite。系统预留 AWS RDS、EC2、S3 和外部 AI 服务配置。
+技术栈：Spring Boot 3、Spring Data JPA、PostgreSQL、Vue 3、Vite。Shipping Job 使用 PostgreSQL `jsonb` 保存出库单快照。
 
 ## 模块
 
@@ -22,7 +22,7 @@ docker compose up --build
 前后端分开部署：
 
 ```bash
-# 后端和 MySQL
+# 后端和 PostgreSQL
 docker compose -f docker-compose.backend.yml up -d --build
 
 # 前端，VITE_API_BASE 必须是浏览器能够访问的后端地址
@@ -40,7 +40,7 @@ docker compose -f docker-compose.frontend.yml up -d --build
 
 - 前端：http://localhost
 - 后端：http://localhost:8080/api/dashboard
-- MySQL：localhost:3306 / root / root / smart_wms
+- PostgreSQL：localhost:5432 / postgres / postgres / smart_wms
 
 也可以分开运行：
 
@@ -69,13 +69,13 @@ AI_MODEL=gpt-4o-mini
 
 ## AWS部署
 
-1. 在 AWS RDS 创建 MySQL 8 数据库 `smart_wms`，导入 `db/init.sql` 或将后端 `DDL_AUTO=update` 交给 JPA 建表。
+1. 在 AWS RDS 创建 PostgreSQL 数据库 `smart_wms`，使用 `DDL_AUTO=update` 由 JPA 建表。
 2. 在 EC2 安装 Docker 和 Docker Compose。
 3. 上传本目录到 EC2，设置环境变量：
 
 ```bash
-export DB_URL='jdbc:mysql://你的-rds-endpoint:3306/smart_wms?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=true'
-export DB_USERNAME='admin'
+export DB_URL='jdbc:postgresql://你的-rds-endpoint:5432/smart_wms'
+export DB_USERNAME='postgres'
 export DB_PASSWORD='你的RDS密码'
 export AI_ENDPOINT='https://api.openai.com/v1/chat/completions'
 export AI_API_KEY='你的Key'

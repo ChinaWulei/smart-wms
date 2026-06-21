@@ -1,16 +1,16 @@
 services:
-  mysql:
-    image: mysql:8.4
+  postgres:
+    image: postgres:16
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: smart_wms
+      POSTGRES_DB: smart_wms
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - mysql-data:/var/lib/mysql
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d smart_wms"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -18,12 +18,12 @@ services:
   backend:
     build: ./backend
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
     environment:
-      DB_URL: jdbc:mysql://mysql:3306/smart_wms?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      DB_USERNAME: root
-      DB_PASSWORD: root
+      DB_URL: jdbc:postgresql://postgres:5432/smart_wms
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
       DDL_AUTO: update
       AI_ENDPOINT: ${AI_ENDPOINT:-}
       AI_API_KEY: ${AI_API_KEY:-}
@@ -44,4 +44,4 @@ services:
       - "80:80"
 
 volumes:
-  mysql-data:
+  postgres-data:

@@ -238,6 +238,91 @@
           </div>
         </section>
 
+        <section v-if="view === 'shipping-jobs'" class="panel shipping-jobs-panel">
+          <div class="panel-head">
+            <div>
+              <h2>{{ labels.shippingJobs }}</h2>
+              <p class="panel-description">{{ labels.shippingJobsHint }}</p>
+            </div>
+            <button @click="loadShippingJobs">{{ text.refresh }}</button>
+          </div>
+          <form class="shipping-job-form" @submit.prevent="createShippingJob">
+            <label>{{ labels.plannedShipDate }}
+              <input v-model="shippingJobForm.plannedShipDate" type="date" required>
+            </label>
+            <label>{{ labels.truckNo }}
+              <input v-model.trim="shippingJobForm.truckNo" :placeholder="labels.truckNoPlaceholder">
+            </label>
+            <label>{{ labels.driverName }}
+              <input v-model.trim="shippingJobForm.driverName">
+            </label>
+            <label>{{ labels.driverPhone }}
+              <input v-model.trim="shippingJobForm.driverPhone">
+            </label>
+            <label class="shipping-job-remark">{{ labels.remark }}
+              <input v-model.trim="shippingJobForm.remark">
+            </label>
+            <fieldset class="shipping-order-picker">
+              <legend>{{ labels.bindOutboundOrders }}</legend>
+              <label v-for="order in bindableOutboundOrders" :key="order.id">
+                <input v-model="shippingJobForm.outboundOrderIds" type="checkbox" :value="order.id">
+                <span>{{ order.orderNo }} / {{ outboundStatus(order.status) }}</span>
+              </label>
+              <span v-if="!bindableOutboundOrders.length" class="hint">{{ labels.noBindableOrders }}</span>
+            </fieldset>
+            <button class="primary" :disabled="loading.shippingJob">
+              {{ loading.shippingJob ? text.submitting : labels.createShippingJob }}
+            </button>
+          </form>
+          <div class="shipping-job-layout">
+            <div class="shipping-job-list">
+              <article v-for="job in shippingJobs" :key="job.id"
+                       :class="['location-card', 'clickable', { active: selectedShippingJob?.id === job.id }]"
+                       @click="selectedShippingJob = job">
+                <b>{{ job.jobNo }}</b>
+                <span>{{ shippingJobStatus(job.status) }} / {{ job.plannedShipDate }}</span>
+                <em>{{ job.truckNo || '-' }} / {{ job.orders?.length || 0 }} {{ labels.ordersUnit }}</em>
+              </article>
+              <div v-if="!shippingJobs.length" class="empty-state">{{ labels.noShippingJobs }}</div>
+            </div>
+            <section v-if="selectedShippingJob" class="detail-column shipping-job-detail">
+              <div class="panel-head">
+                <div>
+                  <h3>{{ selectedShippingJob.jobNo }}</h3>
+                  <span class="status-tag">{{ shippingJobStatus(selectedShippingJob.status) }}</span>
+                </div>
+                <div class="head-actions">
+                  <button v-if="selectedShippingJob.status === 'DRAFT'" class="primary" @click="runShippingJobAction('schedule')">{{ labels.scheduleJob }}</button>
+                  <button v-if="selectedShippingJob.status === 'SCHEDULED'" class="primary" @click="runShippingJobAction('ship')">{{ labels.markShipped }}</button>
+                  <button v-if="!['SHIPPED', 'CANCELLED'].includes(selectedShippingJob.status)" class="danger" @click="runShippingJobAction('cancel')">{{ labels.cancelJob }}</button>
+                </div>
+              </div>
+              <div class="detail-kv"><span>{{ labels.plannedShipDate }}</span><b>{{ selectedShippingJob.plannedShipDate }}</b></div>
+              <div class="detail-kv"><span>{{ labels.truckNo }}</span><b>{{ selectedShippingJob.truckNo || '-' }}</b></div>
+              <div class="detail-kv"><span>{{ labels.driverName }}</span><b>{{ selectedShippingJob.driverName || '-' }} / {{ selectedShippingJob.driverPhone || '-' }}</b></div>
+              <form v-if="selectedShippingJob.status === 'DRAFT' && bindableOutboundOrders.length"
+                    class="shipping-add-orders" @submit.prevent="addShippingOrders">
+                <label>{{ labels.addOutboundOrders }}
+                  <select v-model="shippingOrdersToAdd" multiple>
+                    <option v-for="order in bindableOutboundOrders" :key="order.id" :value="order.id">
+                      {{ order.orderNo }} / {{ outboundStatus(order.status) }}
+                    </option>
+                  </select>
+                </label>
+                <button :disabled="!shippingOrdersToAdd.length || loading.shippingJob">{{ labels.addSelectedOrders }}</button>
+              </form>
+              <h3>{{ labels.boundOrders }}</h3>
+              <article v-for="order in selectedShippingJob.orders" :key="order.orderId" class="detail-item shipping-order-ref">
+                <div>
+                  <b>{{ order.orderNo }}</b>
+                  <span>{{ outboundStatus(order.orderStatus) }} / {{ order.receiverName || '-' }}</span>
+                </div>
+                <button v-if="selectedShippingJob.status === 'DRAFT'" class="danger" @click="removeShippingOrder(order.orderId)">{{ labels.removeItem }}</button>
+              </article>
+            </section>
+          </div>
+        </section>
+
         <section v-if="view === 'picking'" class="panel">
           <div class="panel-head">
             <div>
@@ -669,6 +754,24 @@ const labels = {
   noWarehouse: '\u6682\u65e0\u53ef\u7528\u4ed3\u5e93',
   inboundOrders: '\u5165\u5e93\u8ba2\u5355',
   outboundOrders: '\u51fa\u5e93\u8ba2\u5355',
+  shippingJobs: 'Shipping Job',
+  shippingJobsHint: '\u5c06\u540c\u4e00\u4ed3\u5e93\u3001\u540c\u4e00\u8f66\u6b21\u53d1\u8fd0\u7684\u591a\u4e2a\u51fa\u5e93\u8ba2\u5355\u7ec4\u6210\u4e00\u4e2a Shipping Job',
+  createShippingJob: '\u65b0\u5efa Shipping Job',
+  plannedShipDate: '\u8ba1\u5212\u53d1\u8fd0\u65e5\u671f',
+  truckNo: '\u8f66\u724c\u53f7/\u8f66\u8f86\u7f16\u53f7',
+  truckNoPlaceholder: '\u6392\u8f66\u524d\u5fc5\u586b',
+  driverName: '\u53f8\u673a',
+  driverPhone: '\u53f8\u673a\u7535\u8bdd',
+  bindOutboundOrders: '\u7ed1\u5b9a\u51fa\u5e93\u8ba2\u5355',
+  noBindableOrders: '\u6682\u65e0\u53ef\u7ed1\u5b9a\u7684\u51fa\u5e93\u8ba2\u5355',
+  noShippingJobs: '\u6682\u65e0 Shipping Job',
+  ordersUnit: '\u4e2a\u8ba2\u5355',
+  scheduleJob: '\u786e\u8ba4\u6392\u8f66',
+  markShipped: '\u6807\u8bb0\u5df2\u53d1\u8fd0',
+  cancelJob: '\u53d6\u6d88 Job',
+  boundOrders: '\u5df2\u7ed1\u5b9a\u51fa\u5e93\u8ba2\u5355',
+  addOutboundOrders: '\u7ee7\u7eed\u6dfb\u52a0\u51fa\u5e93\u8ba2\u5355',
+  addSelectedOrders: '\u6dfb\u52a0\u9009\u4e2d\u8ba2\u5355',
   createInbound: '\u65b0\u5efa\u5165\u5e93\u5355',
   createOutbound: '\u65b0\u5efa\u51fa\u5e93\u5355',
   outboundDetail: '\u51fa\u5e93\u8ba2\u5355\u8be6\u60c5',
@@ -783,7 +886,7 @@ const labels = {
 const modules = [
   module('order', '\u8ba2\u5355\u7ba1\u7406', '\u5355', [['order-search', labels.orderSearch]]),
   module('inbound', '\u5165\u5e93\u6a21\u5757', '\u5165', [['inbound-orders', labels.inboundOrders], ['inbound-create', labels.createInbound], ['receiving', labels.receiving], ['inbound-records', '\u5165\u5e93\u8bb0\u5f55']]),
-  module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', labels.outboundOrders], ['outbound-create', labels.createOutbound], ['picking', labels.pickingManagement], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55']]),
+  module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', labels.outboundOrders], ['outbound-create', labels.createOutbound], ['picking', labels.pickingManagement], ['shipping-jobs', labels.shippingJobs], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55']]),
   module('stock', '\u5e93\u5b58\u7ba1\u7406', '\u5b58', [['stock-query', labels.stockQuery], ['stock-flow', labels.stockFlow], ['stock-adjust', '\u5e93\u5b58\u8c03\u6574'], ['stock-distribution', '\u5546\u54c1\u5e93\u5b58\u5206\u5e03']]),
   module('shelf', '\u8d27\u67b6\u7ba1\u7406', '\u67b6', [['shelf-create', labels.shelfCreate], ['shelf-list', '\u8d27\u67b6\u5217\u8868'], ['location-query', labels.locationQuery], ['label-print', '\u8d27\u67b6\u7801\u6253\u5370']]),
   module('product', '\u5546\u54c1\u7ba1\u7406', '\u54c1', [['product-list', '\u5546\u54c1\u5217\u8868'], ['product-create', '\u65b0\u589e\u5546\u54c1'], ['product-category', '\u5546\u54c1\u5206\u7c7b'], ['barcode', '\u6761\u7801\u7ba1\u7406']]),
@@ -814,6 +917,13 @@ const englishLabels = {
   selectWarehouseHint: 'Select a warehouse. You can switch it later in the top-right corner.',
   enterWarehouse: 'Enter Warehouse', currentWarehouse: 'Current Warehouse', noWarehouse: 'No warehouse available',
   inboundOrders: 'Inbound Orders', outboundOrders: 'Outbound Orders', createInbound: 'New Inbound Order',
+  shippingJobs: 'Shipping Jobs', shippingJobsHint: 'Group outbound orders delivered by the same truck on the same day',
+  createShippingJob: 'New Shipping Job', plannedShipDate: 'Planned Ship Date', truckNo: 'Truck No.',
+  truckNoPlaceholder: 'Required before scheduling', driverName: 'Driver', driverPhone: 'Driver Phone',
+  bindOutboundOrders: 'Bind Outbound Orders', noBindableOrders: 'No outbound orders available',
+  noShippingJobs: 'No shipping jobs', ordersUnit: 'orders', scheduleJob: 'Schedule',
+  markShipped: 'Mark Shipped', cancelJob: 'Cancel Job', boundOrders: 'Bound Outbound Orders',
+  addOutboundOrders: 'Add Outbound Orders', addSelectedOrders: 'Add Selected',
   createOutbound: 'New Outbound Order', outboundDetail: 'Outbound Order Details', confirmOutbound: 'Confirm Outbound',
   cancelOutbound: 'Cancel Outbound', pickingManagement: 'Picking', pickingHint: 'Search and process picking tasks',
   noPickingOrders: 'No picking tasks', startPicking: 'Start Picking', completePicking: 'Complete Picking',
@@ -858,7 +968,7 @@ const moduleEnglish = {
 const submoduleEnglish = {
   'order-search': 'Order Search', 'inbound-orders': 'Inbound Orders', 'inbound-create': 'New Inbound Order',
   receiving: 'Receiving', 'inbound-records': 'Inbound Records', 'outbound-orders': 'Outbound Orders',
-  'outbound-create': 'New Outbound Order', picking: 'Picking', 'outbound-records': 'Outbound Records',
+  'outbound-create': 'New Outbound Order', picking: 'Picking', 'shipping-jobs': 'Shipping Jobs', 'outbound-records': 'Outbound Records',
   'stock-query': 'Stock Query', 'stock-flow': 'Stock Movements', 'stock-adjust': 'Stock Adjustment',
   'stock-distribution': 'Inventory Distribution', 'shelf-create': 'Create Shelf', 'shelf-list': 'Shelf List',
   'location-query': 'Location Query', 'label-print': 'Print Shelf Labels', 'product-list': 'Product List',
@@ -896,6 +1006,9 @@ const stocks = ref([])
 const movements = ref([])
 const inboundOrders = ref([])
 const outboundOrders = ref([])
+const shippingJobs = ref([])
+const selectedShippingJob = ref(null)
+const shippingOrdersToAdd = ref([])
 const orderSearchResults = ref([])
 const distributionWarehouseId = ref(null)
 const selectedDistributionLocation = ref(null)
@@ -915,12 +1028,20 @@ const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
 const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
-const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, inboundAction: false, outboundAction: false })
+const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, inboundAction: false, outboundAction: false, shippingJob: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
 const orderSearchFilters = reactive({ orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
 const receiveForm = reactive({ orderNo: '', locationCode: '', productCode: '', quantity: 1 })
 const orderForm = reactive({ type: 'PURCHASE', operatorName: '', receiverName: '', receiverPhone: '', address: '', reason: '', trackingNo: '', remark: '', items: [] })
+const shippingJobForm = reactive({
+  plannedShipDate: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
+  truckNo: '',
+  driverName: '',
+  driverPhone: '',
+  remark: '',
+  outboundOrderIds: []
+})
 const scanResult = reactive({ location: null, product: null })
 const refs = { orderNo: ref(null), locationCode: ref(null), productCode: ref(null), quantity: ref(null) }
 const orderNoRef = refs.orderNo
@@ -934,6 +1055,14 @@ const filteredPickingOrders = computed(() => {
   const keyword = pickingOrderNo.value.trim().toLowerCase()
   return keyword ? pickingOrders.value.filter(order => order.orderNo.toLowerCase().includes(keyword)) : pickingOrders.value
 })
+const boundShippingOrderIds = computed(() => new Set(
+  shippingJobs.value
+    .filter(job => job.status !== 'CANCELLED')
+    .flatMap(job => (job.orders || []).map(order => order.orderId))
+))
+const bindableOutboundOrders = computed(() => outboundOrders.value.filter(order =>
+  order.status !== 'CANCELLED' && !boundShippingOrderIds.value.has(order.id)
+))
 const currentWarehouse = computed(() => warehouses.value.find(warehouse => warehouse.id === selectedWarehouseId.value) || null)
 const stockByLocation = computed(() => stocks.value.reduce((map, stock) => {
   if (!map[stock.locationCode]) map[stock.locationCode] = []
@@ -981,7 +1110,7 @@ const currentOrderTypes = computed(() => isInboundCreate.value
       { value: 'INVENTORY_LOSS', label: typeName('INVENTORY_LOSS') }
     ])
 const placeholderView = computed(() => {
-  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'outbound-detail', 'inbound-create', 'outbound-create', 'picking', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
+  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'outbound-detail', 'inbound-create', 'outbound-create', 'picking', 'shipping-jobs', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
   return currentSubmodules.value.find(s => s.key === view.value)?.label || ''
 })
 const overviewCards = computed(() => [
@@ -1049,6 +1178,9 @@ function clearWarehouseData() {
   movements.value = []
   inboundOrders.value = []
   outboundOrders.value = []
+  shippingJobs.value = []
+  selectedShippingJob.value = null
+  shippingOrdersToAdd.value = []
   orderSearchResults.value = []
   dashboard.value = {}
   inboundOrder.value = null
@@ -1084,6 +1216,7 @@ async function loadView(key) {
   if (key === 'inbound-orders') await loadInboundOrders()
   if (key === 'outbound-orders') await loadOutboundOrders()
   if (key === 'picking') await loadOutboundOrders()
+  if (key === 'shipping-jobs') await Promise.all([loadOutboundOrders(), loadShippingJobs()])
   if (key === 'location-query') await loadLocations()
   if (key === 'stock-query') await loadStocks()
   if (key === 'stock-flow') await loadMovements()
@@ -1148,6 +1281,85 @@ async function syncRoute() {
 async function loadInboundOrders() { inboundOrders.value = await api.get(`/inbound?warehouseId=${selectedWarehouseId.value}`) }
 async function loadOrderDetail(orderNo) { inboundOrderDetail.value = await api.get(`/inbound/${encodeURIComponent(orderNo)}`) }
 async function loadOutboundOrders() { outboundOrders.value = await api.get(`/outbound-orders?warehouseId=${selectedWarehouseId.value}`) }
+async function loadShippingJobs() {
+  shippingJobs.value = await api.get(`/shipping-jobs?warehouseId=${selectedWarehouseId.value}`)
+  if (selectedShippingJob.value) {
+    selectedShippingJob.value = shippingJobs.value.find(job => job.id === selectedShippingJob.value.id) || null
+  }
+}
+function shippingJobStatus(status) {
+  if (locale.value === 'en') return { DRAFT: 'Draft', SCHEDULED: 'Scheduled', SHIPPED: 'Shipped', CANCELLED: 'Cancelled' }[status] || status
+  return { DRAFT: '\u8349\u7a3f', SCHEDULED: '\u5df2\u6392\u8f66', SHIPPED: '\u5df2\u53d1\u8fd0', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
+}
+async function createShippingJob() {
+  if (loading.shippingJob) return
+  loading.shippingJob = true
+  try {
+    const createdBy = user.value?.displayName || user.value?.username || ''
+    const job = await api.post('/shipping-jobs', {
+      warehouseId: selectedWarehouseId.value,
+      plannedShipDate: shippingJobForm.plannedShipDate,
+      truckNo: shippingJobForm.truckNo,
+      driverName: shippingJobForm.driverName,
+      driverPhone: shippingJobForm.driverPhone,
+      remark: shippingJobForm.remark,
+      createdBy,
+      outboundOrderIds: shippingJobForm.outboundOrderIds.map(Number)
+    })
+    shippingJobForm.outboundOrderIds = []
+    shippingJobForm.truckNo = ''
+    shippingJobForm.driverName = ''
+    shippingJobForm.driverPhone = ''
+    shippingJobForm.remark = ''
+    await loadShippingJobs()
+    selectedShippingJob.value = shippingJobs.value.find(item => item.id === job.id) || job
+    showToast(locale.value === 'en' ? 'Shipping job created' : 'Shipping Job \u5df2\u521b\u5efa')
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.shippingJob = false
+  }
+}
+async function runShippingJobAction(action) {
+  if (!selectedShippingJob.value || loading.shippingJob) return
+  loading.shippingJob = true
+  try {
+    selectedShippingJob.value = await api.post(`/shipping-jobs/${selectedShippingJob.value.id}/${action}`)
+    await loadShippingJobs()
+    showToast(locale.value === 'en' ? 'Shipping job updated' : 'Shipping Job \u72b6\u6001\u5df2\u66f4\u65b0')
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.shippingJob = false
+  }
+}
+async function removeShippingOrder(orderId) {
+  if (!selectedShippingJob.value || loading.shippingJob) return
+  loading.shippingJob = true
+  try {
+    selectedShippingJob.value = await api.del(`/shipping-jobs/${selectedShippingJob.value.id}/orders/${orderId}`)
+    await loadShippingJobs()
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.shippingJob = false
+  }
+}
+async function addShippingOrders() {
+  if (!selectedShippingJob.value || !shippingOrdersToAdd.value.length || loading.shippingJob) return
+  loading.shippingJob = true
+  try {
+    selectedShippingJob.value = await api.post(`/shipping-jobs/${selectedShippingJob.value.id}/orders`, {
+      outboundOrderIds: shippingOrdersToAdd.value.map(Number)
+    })
+    shippingOrdersToAdd.value = []
+    await loadShippingJobs()
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.shippingJob = false
+  }
+}
 async function loadOutboundOrderDetail(id) {
   outboundOrderDetail.value = await api.get(`/outbound-orders/${id}`)
   initializePickingQuantities()

@@ -89,6 +89,19 @@ h1, h2, h3, p { margin: 0; }
 .order-table th { background: #f8fafc; color: #475467; font-weight: 700; white-space: nowrap; }
 .order-table tbody tr:hover { background: #f8fbfe; }
 .order-table tbody tr:last-child td { border-bottom: 0; }
+.shipping-job-form { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 14px; margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+.shipping-job-remark { grid-column: span 3; }
+.shipping-order-picker { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid #dbe4ee; border-radius: 8px; background: #fff; }
+.shipping-order-picker label { width: auto; display: flex; align-items: center; gap: 7px; }
+.shipping-order-picker input { width: auto; min-height: auto; }
+.shipping-job-layout { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(420px, 1.4fr); gap: 14px; }
+.shipping-job-list { display: grid; align-content: start; gap: 9px; }
+.shipping-job-list .active { border-color: #1769aa; background: #f4f9fd; }
+.shipping-job-detail { min-width: 0; }
+.shipping-add-orders { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; }
+.shipping-add-orders select { min-height: 92px; }
+.shipping-order-ref { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.shipping-order-ref > div { display: grid; gap: 4px; }
 .direction-tag, .status-tag { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font-size: 12px; white-space: nowrap; }
 .direction-tag.inbound { color: #16653f; background: #dff5e9; }
 .direction-tag.outbound { color: #1d4f91; background: #e5effb; }
@@ -224,7 +237,9 @@ label.disabled { opacity: .78; }
   .overview { grid-template-columns: repeat(2, 1fr); }
   .module-grid { grid-template-columns: repeat(2, 1fr); }
   .submodule-panel { grid-template-columns: repeat(2, 1fr); }
-  .form-grid, .filters, .cards, .scan-result, .detail-grid, .outbound-detail-grid, .order-search-form { grid-template-columns: 1fr; }
+  .form-grid, .filters, .cards, .scan-result, .detail-grid, .outbound-detail-grid, .order-search-form, .shipping-job-form, .shipping-job-layout { grid-template-columns: 1fr; }
+  .shipping-job-remark { grid-column: auto; }
+  .shipping-add-orders { grid-template-columns: 1fr; }
   .order-main-fields .remark-field { grid-column: auto; }
   .outbound-recipient-fields .address-field, .outbound-history-column { grid-column: auto; }
   .outbound-history-column .history-item { grid-template-columns: 1fr; }
