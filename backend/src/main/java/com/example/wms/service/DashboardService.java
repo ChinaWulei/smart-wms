@@ -61,8 +61,14 @@ public class DashboardService {
     }
 
     public Map<String, Object> structuredAiData() {
-        Map<String, Object> data = dashboard(null);
-        data.put("stocks", stockRepository.findAll().stream().map(s -> Map.of(
+        return structuredAiData(null);
+    }
+
+    public Map<String, Object> structuredAiData(Long warehouseId) {
+        Map<String, Object> data = dashboard(warehouseId);
+        data.put("stocks", stockRepository.findAll().stream()
+                .filter(s -> warehouseId == null || s.getWarehouse().getId().equals(warehouseId))
+                .map(s -> Map.of(
                 "sku", s.getProduct().getSku(),
                 "productName", s.getProduct().getName(),
                 "category", value(s.getProduct().getCategory()),
@@ -72,7 +78,9 @@ public class DashboardService {
                 "safetyStock", s.getProduct().getSafetyStock(),
                 "supplier", value(s.getProduct().getSupplier())
         )).toList());
-        data.put("recentMovements", movementRepository.findTop200ByOrderByMovementTimeDesc().stream().map(m -> Map.of(
+        data.put("recentMovements", movementRepository.findTop200ByOrderByMovementTimeDesc().stream()
+                .filter(m -> warehouseId == null || m.getWarehouse().getId().equals(warehouseId))
+                .map(m -> Map.of(
                 "productName", m.getProduct().getName(),
                 "type", m.getType().name(),
                 "quantity", m.getQuantity(),

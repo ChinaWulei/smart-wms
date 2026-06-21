@@ -7,4 +7,4 @@ services:
         NGINX_CONF: nginx.standalone.conf
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-8081}:8081"
+      - "${FRONTEND_PORT:-8081}:80"

@@ -698,6 +698,53 @@
       </section>
     </section>
 
+    <aside v-if="user && selectedWarehouseId" :class="['ai-assistant', { open: aiChat.open }]">
+      <button v-if="!aiChat.open" class="ai-assistant-launcher" @click="aiChat.open = true" aria-label="Open AI assistant">
+        AI
+      </button>
+      <section v-else class="ai-assistant-panel">
+        <header>
+          <div>
+            <b>{{ locale === 'en' ? 'WMS AI Assistant' : 'WMS AI 助手' }}</b>
+            <span>{{ locale === 'en' ? 'Rules · Data · Reports' : '规则 · 数据 · 报表' }}</span>
+          </div>
+          <button @click="aiChat.open = false">×</button>
+        </header>
+        <div ref="aiMessagesRef" class="ai-assistant-messages">
+          <article v-for="(message, index) in aiChat.messages" :key="index" :class="message.role">
+            <span>{{ message.role === 'user' ? (user.displayName || user.username) : agentName(message.agent) }}</span>
+            <p>{{ message.content }}</p>
+            <a v-if="message.reportId" :href="api.pdf(message.reportId)" target="_blank">
+              {{ locale === 'en' ? 'Download PDF report' : '下载 PDF 报表' }}
+            </a>
+          </article>
+          <article v-if="aiChat.loading" class="assistant">
+            <span>AI</span>
+            <p>{{ locale === 'en' ? 'Thinking…' : '正在分析…' }}</p>
+          </article>
+        </div>
+        <div class="ai-assistant-suggestions">
+          <button @click="askAiSuggestion(locale === 'en' ? 'What are the outbound rules?' : '出库流程有什么规则？')">
+            {{ locale === 'en' ? 'Rules' : '规则' }}
+          </button>
+          <button @click="askAiSuggestion(locale === 'en' ? 'Summarize current warehouse inventory' : '分析当前仓库库存情况')">
+            {{ locale === 'en' ? 'Analyze' : '分析库存' }}
+          </button>
+          <button @click="askAiSuggestion(locale === 'en' ? 'Export a warehouse operations report' : '导出一份仓储运营报表')">
+            {{ locale === 'en' ? 'Report' : '导出报表' }}
+          </button>
+        </div>
+        <form @submit.prevent="sendAiMessage">
+          <textarea v-model.trim="aiChat.input" rows="2"
+                    :placeholder="locale === 'en' ? 'Ask about rules, data, or reports…' : '询问规则、业务数据或导出报表…'"
+                    @keydown.enter.exact.prevent="sendAiMessage"></textarea>
+          <button class="primary" :disabled="aiChat.loading || !aiChat.input">
+            {{ locale === 'en' ? 'Send' : '发送' }}
+          </button>
+        </form>
+      </section>
+    </aside>
+
     <div v-if="toast.text" :class="['toast', toast.type]">{{ toast.text }}</div>
   </main>
 </template>
@@ -1028,6 +1075,21 @@ const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
 const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
+const aiMessagesRef = ref(null)
+const aiChat = reactive({
+  open: false,
+  loading: false,
+  input: '',
+  sessionId: localStorage.getItem('wms-ai-session') || createAiSessionId(),
+  messages: [{
+    role: 'assistant',
+    agent: 'supervisor',
+    content: locale.value === 'en'
+      ? 'I can explain WMS rules, analyze current warehouse data, and export PDF reports.'
+      : '我可以解答仓储规则、分析当前仓库数据，也可以生成并导出 PDF 报表。'
+  }]
+})
+localStorage.setItem('wms-ai-session', aiChat.sessionId)
 const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, inboundAction: false, outboundAction: false, shippingJob: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
@@ -1900,6 +1962,50 @@ function orderStatus(status) {
     ? { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', NOT_ENOUGH_INV: 'Not Enough Inv', READY_TO_PICK: 'Ready to Pick', PICKING: 'Picking', PICKED: 'Picked', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }
     : { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', NOT_ENOUGH_INV: 'Not Enough Inv', READY_TO_PICK: 'Ready to Pick', PICKING: '\u62e3\u8d27\u4e2d', PICKED: '\u62e3\u8d27\u5b8c\u6210', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }
   return map[status] || status
+}
+function createAiSessionId() {
+  return globalThis.crypto?.randomUUID?.() || `wms-ai-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+function agentName(agent) {
+  if (locale.value === 'en') return { rules: 'Rules Agent', analytics: 'Data Agent', report: 'Report Agent' }[agent] || 'AI'
+  return { rules: '规则助手', analytics: '数据分析助手', report: '报表助手' }[agent] || 'AI 助手'
+}
+function askAiSuggestion(text) {
+  aiChat.input = text
+  sendAiMessage()
+}
+async function sendAiMessage() {
+  const message = aiChat.input.trim()
+  if (!message || aiChat.loading) return
+  aiChat.messages.push({ role: 'user', content: message })
+  aiChat.input = ''
+  aiChat.loading = true
+  await nextTick()
+  aiMessagesRef.value?.scrollTo({ top: aiMessagesRef.value.scrollHeight, behavior: 'smooth' })
+  try {
+    const response = await api.post('/ai/assistant/chat', {
+      sessionId: aiChat.sessionId,
+      message,
+      warehouseId: selectedWarehouseId.value,
+      locale: locale.value
+    })
+    aiChat.messages.push({
+      role: 'assistant',
+      agent: response.agent,
+      content: response.answer,
+      reportId: response.reportId
+    })
+  } catch (e) {
+    aiChat.messages.push({
+      role: 'assistant',
+      agent: 'supervisor',
+      content: `${locale.value === 'en' ? 'Request failed' : '请求失败'}：${e.message}`
+    })
+  } finally {
+    aiChat.loading = false
+    await nextTick()
+    aiMessagesRef.value?.scrollTo({ top: aiMessagesRef.value.scrollHeight, behavior: 'smooth' })
+  }
 }
 function outboundStatus(status) {
   return orderStatus(status)

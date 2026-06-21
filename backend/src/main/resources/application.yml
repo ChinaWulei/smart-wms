@@ -20,6 +20,9 @@ ai:
   endpoint: ${AI_ENDPOINT:}
   api-key: ${AI_API_KEY:}
   model: ${AI_MODEL:gpt-4o-mini}
+  service-url: ${AI_SERVICE_URL:http://localhost:8090}
+  internal-token: ${AI_INTERNAL_TOKEN:change-me}
+  pdf-font: ${AI_PDF_FONT:/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc,0}
 
 aws:
   s3:

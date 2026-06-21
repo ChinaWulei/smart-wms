@@ -63,7 +63,18 @@ AI不会直接查询数据库。`AiReportService` 调用 `DashboardService.struc
 AI_ENDPOINT=https://api.openai.com/v1/chat/completions
 AI_API_KEY=你的Key
 AI_MODEL=gpt-4o-mini
+AI_BASE_URL=https://api.openai.com/v1
+AI_INTERNAL_TOKEN=请设置一个随机长字符串
 ```
+
+悬浮 AI 助手由独立的 Python `ai-service` 提供，使用 LangGraph 编排：
+
+- Rules Agent：读取 `ai-service/knowledge/wms_rules.md` 回答规则问题。
+- Analytics Agent：通过 Spring Boot 内部只读接口分析当前仓库数据。
+- Report Agent：生成并保存运营报表，返回 PDF 下载链接。
+
+Python 服务不直接连接 PostgreSQL。部署时 `backend` 与 `ai-service` 的
+`AI_INTERNAL_TOKEN` 必须保持一致，生产环境不要使用默认值 `change-me`。
 
 未配置 AI 时，系统会生成规则型基础报告，不影响库存操作。
 
