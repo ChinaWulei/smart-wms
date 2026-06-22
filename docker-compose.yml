@@ -44,6 +44,7 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:-change-me}
+      WMS_DB_DSN: postgresql://${AI_DB_USERNAME:-postgres}:${AI_DB_PASSWORD:-postgres}@postgres:5432/smart_wms
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
       interval: 10s

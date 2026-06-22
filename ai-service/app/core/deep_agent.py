@@ -6,6 +6,7 @@ from deepagents.backends import FilesystemBackend
 from app.agents.analytics.agent import create_analytics_agent
 from app.agents.report.agent import create_report_agent
 from app.agents.rules.agent import create_rules_agent
+from app.agents.text_to_sql.agent import create_text_to_sql_agent
 from app.agents.supervisor.prompt import SYSTEM_PROMPT
 from app.core.memory import supervisor_checkpointer
 from app.core.model import llm
@@ -37,6 +38,14 @@ def build_deep_agent():
                 "inventory, order, trend, quantity, SKU, and dashboard questions."
             ),
             runnable=create_analytics_agent(),
+        ),
+        CompiledSubAgent(
+            name="sql-agent",
+            description=(
+                "Answer detailed WMS data questions by inspecting PostgreSQL "
+                "schemas, generating read-only SQL, and querying warehouse data."
+            ),
+            runnable=create_text_to_sql_agent(),
         ),
         CompiledSubAgent(
             name="report-agent",
@@ -76,10 +85,10 @@ def final_text(result: dict) -> str:
 
 
 def response_metadata(answer: str) -> tuple[str, int | None, str]:
-    agent_match = re.search(r"AGENT=(rules|analytics|report)", answer)
+    agent_match = re.search(r"AGENT=(rules|analytics|sql|report)", answer)
     report_match = re.search(r"REPORT_ID=(\d+)", answer)
     agent = agent_match.group(1) if agent_match else "supervisor"
     report_id = int(report_match.group(1)) if report_match else None
-    cleaned = re.sub(r"\n?AGENT=(rules|analytics|report)", "", answer)
+    cleaned = re.sub(r"\n?AGENT=(rules|analytics|sql|report)", "", answer)
     cleaned = re.sub(r"\n?REPORT_ID=\d+", "", cleaned).strip()
     return agent, report_id, cleaned

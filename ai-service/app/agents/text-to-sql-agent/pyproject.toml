@@ -1,0 +1,22 @@
+[project]
+name = "text2sql-deepagent"
+version = "0.1.0"
+description = "Smart WMS Text-to-SQL agent powered by Deep Agents, Gemini, and PostgreSQL"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents>=0.6.8",
+    "langchain-google-genai>=4.2.5,<5",
+    "langgraph>=1.2.5",
+    "psycopg[binary]>=3.2,<4",
+]
+
+[project.urls]
+Repository = "local-smart-wms"
+
+[build-system]
+requires = ["setuptools>=82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
