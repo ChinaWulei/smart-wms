@@ -1,5 +1,5 @@
 ---
-name: wms-report-generation
+name: report-generation
 description: Generate and persist a PDF-downloadable WMS operations report from approved structured warehouse data.
 ---
 

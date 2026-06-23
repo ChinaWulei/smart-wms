@@ -1,5 +1,5 @@
 ---
-name: wms-agent-delegation
+name: delegation
 description: Select the correct WMS specialist for rules, live data analysis, or PDF report generation.
 ---
 

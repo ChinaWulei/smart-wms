@@ -1,5 +1,5 @@
 ---
-name: wms-rule-answering
+name: rule-answering
 description: Answer WMS inbound, outbound, inventory, Shipping Job, and AI permission rule questions using the local rule base.
 ---
 

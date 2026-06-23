@@ -1,5 +1,5 @@
 ---
-name: warehouse-data-analysis
+name: warehouse-analysis
 description: Analyze current WMS inventory, movements, alerts, products, and dashboard data through the approved read-only tool.
 ---
 
