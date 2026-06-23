@@ -2106,14 +2106,28 @@ async function sendAiMessage() {
       warehouseId: selectedWarehouseId.value,
       locale: locale.value
     }, event => {
-      if (event.type === 'result') {
+      if (event.type === 'final' || event.type === 'result') {
+        if (!event.data?.answer) {
+          streamError = locale.value === 'en' ? 'AI returned an empty answer' : 'AI 返回了空答案'
+          return
+        }
         resultReceived = true
+        const finalTrace = event.type === 'final'
+          ? [...aiChat.trace, {
+              type: 'request',
+              status: event.status,
+              agent: event.agent,
+              label: event.label,
+              detail: event.detail,
+              elapsedMs: event.elapsedMs
+            }]
+          : [...aiChat.trace]
         aiChat.messages.push({
           role: 'assistant',
           agent: event.data.agent,
           content: event.data.answer,
           reportId: event.data.reportId,
-          trace: [...aiChat.trace]
+          trace: finalTrace
         })
         aiChat.loading = false
       } else if (event.type === 'error') {

@@ -1,6 +1,7 @@
 import json
 import queue
 import threading
+import time
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -87,8 +88,15 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
         trace.event("request", "running", "supervisor", "开始处理对话任务")
         try:
             response = _invoke(request, [trace])
-            trace.event("request", "completed", response.agent, "任务处理完成")
-            emit({"type": "result", "status": "completed", "data": response.model_dump()})
+            emit({
+                "type": "final",
+                "status": "completed",
+                "agent": response.agent,
+                "label": "任务处理完成",
+                "detail": "",
+                "elapsedMs": round((time.monotonic() - trace.started_at) * 1000),
+                "data": response.model_dump(),
+            })
         except Exception as exc:
             status = 503 if _is_model_unavailable(exc) else 500
             trace.event("request", "failed", trace.current_agent, "任务处理失败", str(exc))
