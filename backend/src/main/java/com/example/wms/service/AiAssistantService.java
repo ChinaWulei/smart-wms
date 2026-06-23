@@ -10,6 +10,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -64,6 +65,43 @@ public class AiAssistantService {
         } catch (BizException ex) {
             throw ex;
         } catch (AiServiceUnavailableException ex) {
+            throw ex;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new BizException("AI assistant request was interrupted");
+        } catch (Exception ex) {
+            throw new BizException("AI assistant is unavailable: " + ex.getMessage());
+        }
+    }
+
+    public HttpResponse<InputStream> chatStream(ChatRequest request) {
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("session_id", request.sessionId());
+            payload.put("message", request.message());
+            payload.put("warehouse_id", request.warehouseId());
+            payload.put("locale", request.locale() == null ? "zh" : request.locale());
+
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.getServiceUrl() + "/chat/stream"))
+                    .timeout(Duration.ofSeconds(180))
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .header("Content-Type", "application/json; charset=UTF-8")
+                    .header("Accept", "application/x-ndjson")
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            objectMapper.writeValueAsString(payload)))
+                    .build();
+
+            HttpResponse<InputStream> response = httpClient.send(
+                    httpRequest, HttpResponse.BodyHandlers.ofInputStream());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                try (InputStream body = response.body()) {
+                    throw new BizException("AI service returned HTTP " + response.statusCode()
+                            + ": " + new String(body.readAllBytes()));
+                }
+            }
+            return response;
+        } catch (BizException ex) {
             throw ex;
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

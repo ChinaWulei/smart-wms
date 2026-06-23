@@ -248,6 +248,20 @@ label.disabled { opacity: .78; }
 .ai-assistant-messages p { margin: 0; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; line-height: 1.5; font-size: 13px; background: #fff; border: 1px solid #e2e8f0; }
 .ai-assistant-messages .user p { color: #fff; border-color: #1769aa; background: #1769aa; }
 .ai-assistant-messages a { width: fit-content; color: #1769aa; font-size: 13px; font-weight: 700; }
+.ai-task-trace { width: min(100%, 330px); overflow: hidden; border: 1px solid #d8e1eb; border-radius: 9px; background: #f8fafc; }
+.ai-task-trace summary { padding: 8px 10px; cursor: pointer; color: #475467; font-size: 12px; font-weight: 700; }
+.ai-task-trace.live { border-color: #9ec5e8; background: #f0f7ff; }
+.ai-task-trace ol { max-height: 220px; overflow-y: auto; display: grid; gap: 0; margin: 0; padding: 2px 10px 9px; list-style: none; }
+.trace-event { position: relative; display: grid; grid-template-columns: 12px 1fr; gap: 7px; padding: 6px 0; }
+.trace-event:not(:last-child)::after { position: absolute; left: 4px; top: 17px; bottom: -5px; width: 1px; content: ''; background: #cbd5e1; }
+.trace-event i { z-index: 1; width: 9px; height: 9px; margin-top: 3px; border: 2px solid #fff; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 1px #16a34a; }
+.trace-event.running i { background: #2563eb; box-shadow: 0 0 0 1px #2563eb; animation: trace-pulse 1.2s infinite; }
+.trace-event.failed i { background: #dc2626; box-shadow: 0 0 0 1px #dc2626; }
+.trace-event div { min-width: 0; display: grid; gap: 2px; }
+.trace-event b { color: #344054; font-size: 11px; line-height: 1.35; }
+.trace-event small { color: #667085; font-size: 10px; }
+.trace-event em { overflow: hidden; color: #667085; font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes trace-pulse { 50% { opacity: .35; transform: scale(.75); } }
 .ai-assistant-suggestions { display: flex; gap: 6px; overflow-x: auto; padding: 9px 12px 0; }
 .ai-assistant-suggestions button { min-height: 32px; padding: 0 10px; white-space: nowrap; font-size: 12px; }
 .ai-assistant-panel > form { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; padding: 10px 12px 12px; }

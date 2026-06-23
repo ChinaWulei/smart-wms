@@ -716,13 +716,41 @@
           <article v-for="(message, index) in aiChat.messages" :key="index" :class="message.role">
             <span>{{ message.role === 'user' ? (user.displayName || user.username) : agentName(message.agent) }}</span>
             <p>{{ message.content }}</p>
+            <details v-if="message.trace?.length" class="ai-task-trace">
+              <summary>{{ traceSummary(message.trace, false) }}</summary>
+              <ol>
+                <li v-for="(event, eventIndex) in message.trace" :key="eventIndex"
+                    :class="['trace-event', event.status]">
+                  <i></i>
+                  <div>
+                    <b>{{ traceAgentName(event.agent) }} · {{ event.label }}</b>
+                    <small>{{ traceTiming(event) }}</small>
+                    <em v-if="event.detail">{{ event.detail }}</em>
+                  </div>
+                </li>
+              </ol>
+            </details>
             <a v-if="message.reportId" :href="api.pdf(message.reportId)" target="_blank">
               {{ locale === 'en' ? 'Download PDF report' : '下载 PDF 报表' }}
             </a>
           </article>
           <article v-if="aiChat.loading" class="assistant">
             <span>AI</span>
-            <p>{{ locale === 'en' ? 'Thinking…' : '正在分析…' }}</p>
+            <p>{{ liveTraceLabel }}</p>
+            <details class="ai-task-trace live" open>
+              <summary>{{ traceSummary(aiChat.trace, true) }}</summary>
+              <ol>
+                <li v-for="(event, eventIndex) in aiChat.trace" :key="eventIndex"
+                    :class="['trace-event', event.status]">
+                  <i></i>
+                  <div>
+                    <b>{{ traceAgentName(event.agent) }} · {{ event.label }}</b>
+                    <small>{{ traceTiming(event) }}</small>
+                    <em v-if="event.detail">{{ event.detail }}</em>
+                  </div>
+                </li>
+              </ol>
+            </details>
           </article>
         </div>
         <div class="ai-assistant-suggestions">
@@ -1089,6 +1117,7 @@ const aiChat = reactive({
   open: false,
   loading: false,
   input: '',
+  trace: [],
   sessionId: localStorage.getItem('wms-ai-session') || createAiSessionId(),
   messages: [{
     role: 'assistant',
@@ -1097,6 +1126,13 @@ const aiChat = reactive({
       ? 'I can explain WMS rules, analyze current warehouse data, and export PDF reports.'
       : '我可以解答仓储规则、分析当前仓库数据，也可以生成并导出 PDF 报表。'
   }]
+})
+const liveTraceLabel = computed(() => {
+  const event = aiChat.trace.at(-1)
+  if (!event) return locale.value === 'en' ? 'Preparing task…' : '正在准备任务…'
+  return locale.value === 'en'
+    ? `${traceAgentName(event.agent)}: ${event.label}`
+    : `${traceAgentName(event.agent)}：${event.label}`
 })
 localStorage.setItem('wms-ai-session', aiChat.sessionId)
 const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, inboundAction: false, outboundAction: false, shippingJob: false })
@@ -2029,8 +2065,24 @@ function clampAiPosition() {
   aiPosition.y = Math.min(Math.max(margin, aiPosition.y), Math.max(margin, window.innerHeight - element.offsetHeight - margin))
 }
 function agentName(agent) {
-  if (locale.value === 'en') return { rules: 'Rules Agent', analytics: 'Data Agent', report: 'Report Agent' }[agent] || 'AI'
-  return { rules: '规则助手', analytics: '数据分析助手', report: '报表助手' }[agent] || 'AI 助手'
+  if (locale.value === 'en') return { rules: 'Rules Agent', analytics: 'Data Agent', sql: 'SQL Agent', report: 'Report Agent' }[agent] || 'AI'
+  return { rules: '规则助手', analytics: '数据分析助手', sql: 'SQL 查询助手', report: '报表助手' }[agent] || 'AI 助手'
+}
+function traceAgentName(agent) {
+  if (locale.value === 'en') {
+    return { supervisor: 'Supervisor', rules: 'Rules Agent', analytics: 'Data Agent', sql: 'SQL Agent', report: 'Report Agent' }[agent] || agent || 'System'
+  }
+  return { supervisor: '调度 Agent', rules: '规则 Agent', analytics: '分析 Agent', sql: 'SQL Agent', report: '报表 Agent' }[agent] || agent || '系统'
+}
+function traceTiming(event) {
+  const elapsed = `${(Number(event.elapsedMs || 0) / 1000).toFixed(1)}s`
+  const duration = event.durationMs == null ? '' : ` · ${locale.value === 'en' ? 'took' : '耗时'} ${(event.durationMs / 1000).toFixed(1)}s`
+  return `${locale.value === 'en' ? 'At' : '第'} ${elapsed}${duration}`
+}
+function traceSummary(trace, running) {
+  const count = trace?.length || 0
+  if (locale.value === 'en') return running ? `Live execution trace · ${count} events` : `Execution trace · ${count} events`
+  return running ? `实时执行轨迹 · ${count} 个事件` : `执行轨迹 · ${count} 个事件`
 }
 function askAiSuggestion(text) {
   aiChat.input = text
@@ -2042,26 +2094,41 @@ async function sendAiMessage() {
   aiChat.messages.push({ role: 'user', content: message })
   aiChat.input = ''
   aiChat.loading = true
+  aiChat.trace = []
   await nextTick()
   aiMessagesRef.value?.scrollTo({ top: aiMessagesRef.value.scrollHeight, behavior: 'smooth' })
   try {
-    const response = await api.post('/ai/assistant/chat', {
+    let response = null
+    let streamError = null
+    await api.chatStream({
       sessionId: aiChat.sessionId,
       message,
       warehouseId: selectedWarehouseId.value,
       locale: locale.value
+    }, event => {
+      if (event.type === 'result') response = event.data
+      else if (event.type === 'error') streamError = event.message
+      else aiChat.trace.push(event)
+      nextTick(() => aiMessagesRef.value?.scrollTo({
+        top: aiMessagesRef.value.scrollHeight,
+        behavior: 'smooth'
+      }))
     })
+    if (streamError) throw new Error(streamError)
+    if (!response) throw new Error(locale.value === 'en' ? 'AI returned no result' : 'AI 未返回结果')
     aiChat.messages.push({
       role: 'assistant',
       agent: response.agent,
       content: response.answer,
-      reportId: response.reportId
+      reportId: response.reportId,
+      trace: [...aiChat.trace]
     })
   } catch (e) {
     aiChat.messages.push({
       role: 'assistant',
       agent: 'supervisor',
-      content: `${locale.value === 'en' ? 'Request failed' : '请求失败'}：${e.message}`
+      content: `${locale.value === 'en' ? 'Request failed' : '请求失败'}：${e.message}`,
+      trace: [...aiChat.trace]
     })
   } finally {
     aiChat.loading = false
