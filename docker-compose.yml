@@ -46,6 +46,7 @@ services:
       BACKEND_URL: http://backend:8080
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-5}
       AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:-change-me}
       WMS_DB_DSN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-smart_wms}
     healthcheck:

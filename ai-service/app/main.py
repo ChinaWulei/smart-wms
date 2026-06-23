@@ -9,6 +9,15 @@ from app.core.schemas import ChatRequest, ChatResponse
 app = FastAPI(title="Smart WMS Multi-Agent Service", version="1.0.0")
 
 
+def _is_model_unavailable(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "503 unavailable" in message
+        or "high demand" in message
+        or "service unavailable" in message
+    )
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "modelConfigured": model_configured()}
@@ -42,4 +51,9 @@ def chat(request: ChatRequest) -> ChatResponse:
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"WMS backend unavailable: {exc}") from exc
     except Exception as exc:
+        if _is_model_unavailable(exc):
+            raise HTTPException(
+                status_code=503,
+                detail="Gemini model is temporarily busy after automatic retries. Please try again later.",
+            ) from exc
         raise HTTPException(status_code=500, detail=str(exc)) from exc

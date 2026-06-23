@@ -1,6 +1,7 @@
 package com.example.wms.service;
 
 import com.example.wms.common.BizException;
+import com.example.wms.common.AiServiceUnavailableException;
 import com.example.wms.config.AiProperties;
 import com.example.wms.dto.AiAssistantDtos.ChatRequest;
 import com.example.wms.dto.AiAssistantDtos.ChatResponse;
@@ -49,6 +50,10 @@ public class AiAssistantService {
 
             HttpResponse<String> response = httpClient.send(
                     httpRequest, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 503) {
+                throw new AiServiceUnavailableException(
+                        "AI 模型当前繁忙，系统已自动重试，请稍后再试");
+            }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new BizException("AI service returned HTTP " + response.statusCode()
                         + ": " + response.body());
@@ -57,6 +62,8 @@ public class AiAssistantService {
             if (chatResponse == null) throw new BizException("AI assistant returned an empty response");
             return chatResponse;
         } catch (BizException ex) {
+            throw ex;
+        } catch (AiServiceUnavailableException ex) {
             throw ex;
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

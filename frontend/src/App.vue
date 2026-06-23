@@ -698,17 +698,19 @@
       </section>
     </section>
 
-    <aside v-if="user && selectedWarehouseId" :class="['ai-assistant', { open: aiChat.open }]">
-      <button v-if="!aiChat.open" class="ai-assistant-launcher" @click="aiChat.open = true" aria-label="Open AI assistant">
+    <aside v-if="user && selectedWarehouseId" ref="aiAssistantRef"
+           :class="['ai-assistant', { open: aiChat.open, dragging: aiDrag.active }]"
+           :style="aiChat.open ? aiAssistantStyle : undefined">
+      <button v-if="!aiChat.open" class="ai-assistant-launcher" @click="openAiAssistant" aria-label="Open AI assistant">
         AI
       </button>
       <section v-else class="ai-assistant-panel">
-        <header>
+        <header class="ai-assistant-drag-handle" @pointerdown="startAiDrag">
           <div>
             <b>{{ locale === 'en' ? 'WMS AI Assistant' : 'WMS AI 助手' }}</b>
             <span>{{ locale === 'en' ? 'Rules · Data · Reports' : '规则 · 数据 · 报表' }}</span>
           </div>
-          <button @click="aiChat.open = false">×</button>
+          <button @pointerdown.stop @click="aiChat.open = false">×</button>
         </header>
         <div ref="aiMessagesRef" class="ai-assistant-messages">
           <article v-for="(message, index) in aiChat.messages" :key="index" :class="message.role">
@@ -1076,6 +1078,13 @@ const lastScan = reactive({ value: '', time: 0 })
 const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
 const aiMessagesRef = ref(null)
+const aiAssistantRef = ref(null)
+const savedAiPosition = loadAiPosition()
+const aiPosition = reactive(savedAiPosition || { x: null, y: null })
+const aiDrag = reactive({ active: false, offsetX: 0, offsetY: 0 })
+const aiAssistantStyle = computed(() => aiPosition.x == null || aiPosition.y == null
+  ? {}
+  : { left: `${aiPosition.x}px`, top: `${aiPosition.y}px`, right: 'auto', bottom: 'auto' })
 const aiChat = reactive({
   open: false,
   loading: false,
@@ -1966,6 +1975,59 @@ function orderStatus(status) {
 function createAiSessionId() {
   return globalThis.crypto?.randomUUID?.() || `wms-ai-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
+function loadAiPosition() {
+  try {
+    const position = JSON.parse(localStorage.getItem('wms-ai-position') || 'null')
+    return Number.isFinite(position?.x) && Number.isFinite(position?.y) ? position : null
+  } catch {
+    return null
+  }
+}
+function openAiAssistant() {
+  aiChat.open = true
+  nextTick(clampAiPosition)
+}
+function startAiDrag(event) {
+  if (window.innerWidth <= 800 || event.button !== 0) return
+  const rect = aiAssistantRef.value?.getBoundingClientRect()
+  if (!rect) return
+  aiPosition.x = rect.left
+  aiPosition.y = rect.top
+  aiDrag.active = true
+  aiDrag.offsetX = event.clientX - rect.left
+  aiDrag.offsetY = event.clientY - rect.top
+  event.preventDefault()
+}
+function moveAiDrag(event) {
+  if (!aiDrag.active) return
+  const element = aiAssistantRef.value
+  if (!element) return
+  const margin = 8
+  aiPosition.x = Math.min(
+    Math.max(margin, event.clientX - aiDrag.offsetX),
+    Math.max(margin, window.innerWidth - element.offsetWidth - margin)
+  )
+  aiPosition.y = Math.min(
+    Math.max(margin, event.clientY - aiDrag.offsetY),
+    Math.max(margin, window.innerHeight - element.offsetHeight - margin)
+  )
+}
+function stopAiDrag() {
+  if (!aiDrag.active) return
+  aiDrag.active = false
+  localStorage.setItem('wms-ai-position', JSON.stringify({
+    x: Math.round(aiPosition.x),
+    y: Math.round(aiPosition.y)
+  }))
+}
+function clampAiPosition() {
+  if (!aiChat.open || aiPosition.x == null || aiPosition.y == null) return
+  const element = aiAssistantRef.value
+  if (!element) return
+  const margin = 8
+  aiPosition.x = Math.min(Math.max(margin, aiPosition.x), Math.max(margin, window.innerWidth - element.offsetWidth - margin))
+  aiPosition.y = Math.min(Math.max(margin, aiPosition.y), Math.max(margin, window.innerHeight - element.offsetHeight - margin))
+}
 function agentName(agent) {
   if (locale.value === 'en') return { rules: 'Rules Agent', analytics: 'Data Agent', report: 'Report Agent' }[agent] || 'AI'
   return { rules: '规则助手', analytics: '数据分析助手', report: '报表助手' }[agent] || 'AI 助手'
@@ -2042,6 +2104,10 @@ function typeName(type) {
 
 onMounted(async () => {
   switchLanguage()
+  window.addEventListener('pointermove', moveAiDrag)
+  window.addEventListener('pointerup', stopAiDrag)
+  window.addEventListener('pointercancel', stopAiDrag)
+  window.addEventListener('resize', clampAiPosition)
   window.addEventListener('popstate', syncRoute)
   if (user.value) {
     await Promise.all([loadWarehouses(), loadProducts()])
@@ -2052,5 +2118,11 @@ onMounted(async () => {
     } else openHome(true)
   } else nextTick(() => loginUserRef.value?.focus())
 })
-onUnmounted(() => window.removeEventListener('popstate', syncRoute))
+onUnmounted(() => {
+  window.removeEventListener('pointermove', moveAiDrag)
+  window.removeEventListener('pointerup', stopAiDrag)
+  window.removeEventListener('pointercancel', stopAiDrag)
+  window.removeEventListener('resize', clampAiPosition)
+  window.removeEventListener('popstate', syncRoute)
+})
 </script>

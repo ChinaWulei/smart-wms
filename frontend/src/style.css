@@ -235,6 +235,8 @@ label.disabled { opacity: .78; }
 .ai-assistant-launcher { width: 58px; height: 58px; padding: 0; border: 0; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #1769aa, #5b4dd6); box-shadow: 0 12px 28px rgba(23, 105, 170, .35); font-weight: 800; font-size: 18px; }
 .ai-assistant-panel { width: min(390px, calc(100vw - 24px)); height: min(620px, calc(100vh - 40px)); display: grid; grid-template-rows: auto 1fr auto auto; overflow: hidden; border: 1px solid #ccd8e5; border-radius: 16px; background: #fff; box-shadow: 0 20px 55px rgba(15, 23, 42, .24); }
 .ai-assistant-panel > header { display: flex; justify-content: space-between; align-items: center; padding: 13px 15px; color: #fff; background: linear-gradient(135deg, #1769aa, #4f46b8); }
+.ai-assistant-drag-handle { cursor: move; touch-action: none; user-select: none; }
+.ai-assistant.dragging .ai-assistant-panel { box-shadow: 0 24px 65px rgba(15, 23, 42, .32); }
 .ai-assistant-panel > header div { display: grid; gap: 2px; }
 .ai-assistant-panel > header span { font-size: 11px; opacity: .82; }
 .ai-assistant-panel > header button { width: 34px; min-height: 34px; padding: 0; border: 0; color: #fff; background: transparent; font-size: 24px; }
@@ -275,5 +277,7 @@ label.disabled { opacity: .78; }
   .warehouse-switcher { grid-column: 1 / -1; }
   .top button { width: 92px; }
   .ai-assistant { right: 12px; bottom: 12px; }
+  .ai-assistant.open { left: auto !important; top: auto !important; right: 12px !important; bottom: 12px !important; }
+  .ai-assistant-drag-handle { cursor: default; touch-action: auto; }
   .ai-assistant-panel { height: min(580px, calc(100vh - 24px)); }
 }
