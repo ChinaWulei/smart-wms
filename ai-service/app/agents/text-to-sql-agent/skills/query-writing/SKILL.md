@@ -10,7 +10,8 @@ description: Writes and executes PostgreSQL SELECT queries for Smart WMS invento
 1. Identify the business object in the question.
 2. Use `get_wms_schema` for all likely tables before writing SQL.
 3. Write one PostgreSQL `SELECT` or read-only `WITH` query.
-4. Use `execute_readonly_sql` to run it.
+4. Use `execute_readonly_sql` to run it. Pass raw SQL only, without Markdown
+   fences, an `SQL:` prefix, or explanatory text.
 5. Explain the result, including filters, date range, warehouse scope, and
    calculation logic.
 

@@ -45,6 +45,12 @@ FORBIDDEN_SQL = re.compile(
     re.IGNORECASE,
 )
 SQL_COMMENT = re.compile(r"(--|/\*|\*/)")
+SQL_CODE_BLOCK = re.compile(
+    r"^\s*```(?:sql|postgresql)?\s*(.*?)\s*```\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+SQL_LABEL = re.compile(r"^\s*(?:sql|query)\s*:\s*", re.IGNORECASE)
+READONLY_START = re.compile(r"^(select|with)\b", re.IGNORECASE)
 
 
 def _connect():
@@ -54,13 +60,16 @@ def _connect():
 def _normalize_readonly_sql(sql: str) -> str:
     if not sql or not sql.strip():
         raise ValueError("SQL must not be blank")
-    normalized = sql.strip()
+    normalized = sql.strip().lstrip("\ufeff")
+    code_block = SQL_CODE_BLOCK.fullmatch(normalized)
+    if code_block:
+        normalized = code_block.group(1).strip()
+    normalized = SQL_LABEL.sub("", normalized, count=1).strip()
     if normalized.endswith(";"):
         normalized = normalized[:-1].strip()
     if ";" in normalized:
         raise ValueError("Only one SQL statement is allowed")
-    lower = normalized.lower()
-    if not (lower.startswith("select ") or lower.startswith("with ")):
+    if not READONLY_START.match(normalized):
         raise ValueError("Only SELECT or read-only WITH queries are allowed")
     if FORBIDDEN_SQL.search(normalized) or SQL_COMMENT.search(normalized):
         raise ValueError("Forbidden SQL keyword or comment detected")
