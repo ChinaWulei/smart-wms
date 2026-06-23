@@ -2098,31 +2098,36 @@ async function sendAiMessage() {
   await nextTick()
   aiMessagesRef.value?.scrollTo({ top: aiMessagesRef.value.scrollHeight, behavior: 'smooth' })
   try {
-    let response = null
     let streamError = null
+    let resultReceived = false
     await api.chatStream({
       sessionId: aiChat.sessionId,
       message,
       warehouseId: selectedWarehouseId.value,
       locale: locale.value
     }, event => {
-      if (event.type === 'result') response = event.data
-      else if (event.type === 'error') streamError = event.message
-      else aiChat.trace.push(event)
+      if (event.type === 'result') {
+        resultReceived = true
+        aiChat.messages.push({
+          role: 'assistant',
+          agent: event.data.agent,
+          content: event.data.answer,
+          reportId: event.data.reportId,
+          trace: [...aiChat.trace]
+        })
+        aiChat.loading = false
+      } else if (event.type === 'error') {
+        streamError = event.message
+      } else {
+        aiChat.trace.push(event)
+      }
       nextTick(() => aiMessagesRef.value?.scrollTo({
         top: aiMessagesRef.value.scrollHeight,
         behavior: 'smooth'
       }))
     })
     if (streamError) throw new Error(streamError)
-    if (!response) throw new Error(locale.value === 'en' ? 'AI returned no result' : 'AI 未返回结果')
-    aiChat.messages.push({
-      role: 'assistant',
-      agent: response.agent,
-      content: response.answer,
-      reportId: response.reportId,
-      trace: [...aiChat.trace]
-    })
+    if (!resultReceived) throw new Error(locale.value === 'en' ? 'AI returned no result' : 'AI 未返回结果')
   } catch (e) {
     aiChat.messages.push({
       role: 'assistant',
