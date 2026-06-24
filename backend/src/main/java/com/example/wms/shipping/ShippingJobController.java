@@ -36,38 +36,38 @@ public class ShippingJobController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<ShippingJob> get(@PathVariable Long id) {
+    public ApiResponse<ShippingJob> get(@PathVariable String id) {
         return ApiResponse.ok(shippingJobService.get(id));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<ShippingJob> update(@PathVariable Long id,
+    public ApiResponse<ShippingJob> update(@PathVariable String id,
                                            @Valid @RequestBody UpdateShippingJobRequest request) {
         return ApiResponse.ok(shippingJobService.update(id, request));
     }
 
     @PostMapping("/{id}/orders")
-    public ApiResponse<ShippingJob> addOrders(@PathVariable Long id, @Valid @RequestBody AddOrdersRequest request) {
+    public ApiResponse<ShippingJob> addOrders(@PathVariable String id, @Valid @RequestBody AddOrdersRequest request) {
         return ApiResponse.ok(shippingJobService.addOrders(id, request.outboundOrderIds()));
     }
 
     @DeleteMapping("/{id}/orders/{orderId}")
-    public ApiResponse<ShippingJob> removeOrder(@PathVariable Long id, @PathVariable Long orderId) {
+    public ApiResponse<ShippingJob> removeOrder(@PathVariable String id, @PathVariable Long orderId) {
         return ApiResponse.ok(shippingJobService.removeOrder(id, orderId));
     }
 
     @PostMapping("/{id}/schedule")
-    public ApiResponse<ShippingJob> schedule(@PathVariable Long id) {
+    public ApiResponse<ShippingJob> schedule(@PathVariable String id) {
         return ApiResponse.ok(shippingJobService.schedule(id));
     }
 
     @PostMapping("/{id}/ship")
-    public ApiResponse<ShippingJob> ship(@PathVariable Long id) {
+    public ApiResponse<ShippingJob> ship(@PathVariable String id) {
         return ApiResponse.ok(shippingJobService.ship(id));
     }
 
     @PostMapping("/{id}/cancel")
-    public ApiResponse<ShippingJob> cancel(@PathVariable Long id) {
+    public ApiResponse<ShippingJob> cancel(@PathVariable String id) {
         return ApiResponse.ok(shippingJobService.cancel(id));
     }
 }

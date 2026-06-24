@@ -1,44 +1,51 @@
 package com.example.wms.shipping;
 
-import com.example.wms.domain.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
 
-@Entity
-@Table(name = "shipping_jobs")
-public class ShippingJob extends BaseEntity {
+@Document(collection = "shipping_job")
+@CompoundIndexes({
+        @CompoundIndex(name = "idx_shipping_job_warehouse_status_created",
+                def = "{'warehouseId': 1, 'status': 1, 'createdAt': -1}"),
+        @CompoundIndex(name = "idx_shipping_job_warehouse_planned_created",
+                def = "{'warehouseId': 1, 'plannedShipDate': -1, 'createdAt': -1}"),
+        @CompoundIndex(name = "idx_shipping_job_orders_order_id",
+                def = "{'orders.orderId': 1}")
+})
+public class ShippingJob {
+    @Id
+    private String id;
     @Version
     private Long version;
-    @Column(nullable = false, unique = true)
+    @Indexed(unique = true)
     private String jobNo;
-    @Column(nullable = false)
     private Long warehouseId;
     private String warehouseCode;
-    @Column(nullable = false)
+    @Indexed
+    private String warehouseCode3;
+    private Long sequence;
     private LocalDate plannedShipDate;
     private String truckNo;
     private String driverName;
     private String driverPhone;
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
     private ShippingJobStatus status = ShippingJobStatus.DRAFT;
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(nullable = false, columnDefinition = "jsonb")
     private List<ShippingOrderRef> orders = new ArrayList<>();
     private String remark;
     private String createdBy;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
     private LocalDateTime shippedAt;
 
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public Long getVersion() { return version; }
     public void setVersion(Long version) { this.version = version; }
     public String getJobNo() { return jobNo; }
@@ -47,6 +54,10 @@ public class ShippingJob extends BaseEntity {
     public void setWarehouseId(Long warehouseId) { this.warehouseId = warehouseId; }
     public String getWarehouseCode() { return warehouseCode; }
     public void setWarehouseCode(String warehouseCode) { this.warehouseCode = warehouseCode; }
+    public String getWarehouseCode3() { return warehouseCode3; }
+    public void setWarehouseCode3(String warehouseCode3) { this.warehouseCode3 = warehouseCode3; }
+    public Long getSequence() { return sequence; }
+    public void setSequence(Long sequence) { this.sequence = sequence; }
     public LocalDate getPlannedShipDate() { return plannedShipDate; }
     public void setPlannedShipDate(LocalDate plannedShipDate) { this.plannedShipDate = plannedShipDate; }
     public String getTruckNo() { return truckNo; }
@@ -63,6 +74,10 @@ public class ShippingJob extends BaseEntity {
     public void setRemark(String remark) { this.remark = remark; }
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     public LocalDateTime getShippedAt() { return shippedAt; }
     public void setShippedAt(LocalDateTime shippedAt) { this.shippedAt = shippedAt; }
 

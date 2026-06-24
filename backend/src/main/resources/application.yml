@@ -10,6 +10,7 @@ spring:
       username: ${MONGO_APP_USERNAME:smart_wms}
       password: ${MONGO_APP_PASSWORD:change-this-mongodb-app-password}
       authentication-database: ${MONGO_APP_DATABASE:smart_wms_documents}
+      auto-index-creation: true
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/smart_wms}
     username: ${DB_USERNAME:postgres}

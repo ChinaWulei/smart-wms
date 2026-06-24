@@ -246,44 +246,75 @@
             </div>
             <button @click="loadShippingJobs">{{ text.refresh }}</button>
           </div>
-          <form class="shipping-job-form" @submit.prevent="createShippingJob">
-            <label>{{ labels.plannedShipDate }}
-              <input v-model="shippingJobForm.plannedShipDate" type="date" required>
-            </label>
-            <label>{{ labels.truckNo }}
-              <input v-model.trim="shippingJobForm.truckNo" :placeholder="labels.truckNoPlaceholder">
-            </label>
-            <label>{{ labels.driverName }}
-              <input v-model.trim="shippingJobForm.driverName">
-            </label>
-            <label>{{ labels.driverPhone }}
-              <input v-model.trim="shippingJobForm.driverPhone">
-            </label>
-            <label class="shipping-job-remark">{{ labels.remark }}
-              <input v-model.trim="shippingJobForm.remark">
-            </label>
-            <fieldset class="shipping-order-picker">
-              <legend>{{ labels.bindOutboundOrders }}</legend>
-              <label v-for="order in bindableOutboundOrders" :key="order.id">
-                <input v-model="shippingJobForm.outboundOrderIds" type="checkbox" :value="order.id">
-                <span>{{ order.orderNo }} / {{ outboundStatus(order.status) }}</span>
-              </label>
-              <span v-if="!bindableOutboundOrders.length" class="hint">{{ labels.noBindableOrders }}</span>
-            </fieldset>
-            <button class="primary" :disabled="loading.shippingJob">
-              {{ loading.shippingJob ? text.submitting : labels.createShippingJob }}
+          <div class="page-tabs">
+            <button :class="{ active: shippingJobTab === 'query' }" @click="shippingJobTab = 'query'">
+              {{ locale === 'en' ? 'Query' : '查询' }}
             </button>
-          </form>
-          <div class="shipping-job-layout">
-            <div class="shipping-job-list">
-              <article v-for="job in shippingJobs" :key="job.id"
-                       :class="['location-card', 'clickable', { active: selectedShippingJob?.id === job.id }]"
-                       @click="selectedShippingJob = job">
-                <b>{{ job.jobNo }}</b>
-                <span>{{ shippingJobStatus(job.status) }} / {{ job.plannedShipDate }}</span>
-                <em>{{ job.truckNo || '-' }} / {{ job.orders?.length || 0 }} {{ labels.ordersUnit }}</em>
-              </article>
-              <div v-if="!shippingJobs.length" class="empty-state">{{ labels.noShippingJobs }}</div>
+            <button :class="{ active: shippingJobTab === 'create' }" @click="shippingJobTab = 'create'">
+              {{ labels.createShippingJob }}
+            </button>
+          </div>
+
+          <section v-if="shippingJobTab === 'query'" class="query-page">
+            <form class="filters shipping-job-filters" @submit.prevent>
+              <label>{{ locale === 'en' ? 'Job No.' : 'Shipping Job编号' }}
+                <input v-model.trim="shippingJobFilters.jobNo" placeholder="SH-WHA-00000001">
+              </label>
+              <label>{{ locale === 'en' ? 'Status' : '状态' }}
+                <select v-model="shippingJobFilters.status">
+                  <option value="">{{ locale === 'en' ? 'All' : '全部' }}</option>
+                  <option value="DRAFT">{{ shippingJobStatus('DRAFT') }}</option>
+                  <option value="SCHEDULED">{{ shippingJobStatus('SCHEDULED') }}</option>
+                  <option value="SHIPPED">{{ shippingJobStatus('SHIPPED') }}</option>
+                  <option value="CANCELLED">{{ shippingJobStatus('CANCELLED') }}</option>
+                </select>
+              </label>
+              <label>{{ labels.truckNo }}
+                <input v-model.trim="shippingJobFilters.truckNo">
+              </label>
+              <label>{{ labels.plannedShipDate }}
+                <input v-model="shippingJobFilters.plannedShipDate" type="date">
+              </label>
+              <button type="button" @click="resetShippingJobFilters">{{ locale === 'en' ? 'Reset' : '重置' }}</button>
+            </form>
+
+            <p class="result-summary">
+              {{ locale === 'en' ? 'Results' : '查询结果' }}：
+              <b>{{ filteredShippingJobs.length }}</b>
+              {{ labels.ordersUnit }}
+            </p>
+            <div class="table-wrap shipping-job-results">
+              <table class="order-table">
+                <thead>
+                  <tr>
+                    <th>{{ locale === 'en' ? 'Job No.' : '编号' }}</th>
+                    <th>{{ locale === 'en' ? 'Status' : '状态' }}</th>
+                    <th>{{ labels.plannedShipDate }}</th>
+                    <th>{{ labels.truckNo }}</th>
+                    <th>{{ locale === 'en' ? 'Orders' : '订单数' }}</th>
+                    <th>{{ locale === 'en' ? 'Created At' : '创建时间' }}</th>
+                    <th>{{ locale === 'en' ? 'Actions' : '操作' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="job in filteredShippingJobs" :key="job.id"
+                      :class="{ selected: selectedShippingJob?.id === job.id }"
+                      @click="selectedShippingJob = job">
+                    <td><b>{{ job.jobNo }}</b></td>
+                    <td><span class="status-tag">{{ shippingJobStatus(job.status) }}</span></td>
+                    <td>{{ job.plannedShipDate }}</td>
+                    <td>{{ job.truckNo || '-' }}</td>
+                    <td>{{ job.orders?.length || 0 }}</td>
+                    <td>{{ formatDateTime(job.createdAt) }}</td>
+                    <td>
+                      <button type="button" @click.stop="selectedShippingJob = job">
+                        {{ locale === 'en' ? 'Detail' : '详情' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="!filteredShippingJobs.length" class="empty-state">{{ labels.noShippingJobs }}</div>
             </div>
             <section v-if="selectedShippingJob" class="detail-column shipping-job-detail">
               <div class="panel-head">
@@ -320,7 +351,36 @@
                 <button v-if="selectedShippingJob.status === 'DRAFT'" class="danger" @click="removeShippingOrder(order.orderId)">{{ labels.removeItem }}</button>
               </article>
             </section>
-          </div>
+          </section>
+
+          <form v-if="shippingJobTab === 'create'" class="shipping-job-form" @submit.prevent="createShippingJob">
+            <label>{{ labels.plannedShipDate }}
+              <input v-model="shippingJobForm.plannedShipDate" type="date" required>
+            </label>
+            <label>{{ labels.truckNo }}
+              <input v-model.trim="shippingJobForm.truckNo" :placeholder="labels.truckNoPlaceholder">
+            </label>
+            <label>{{ labels.driverName }}
+              <input v-model.trim="shippingJobForm.driverName">
+            </label>
+            <label>{{ labels.driverPhone }}
+              <input v-model.trim="shippingJobForm.driverPhone">
+            </label>
+            <label class="shipping-job-remark">{{ labels.remark }}
+              <input v-model.trim="shippingJobForm.remark">
+            </label>
+            <fieldset class="shipping-order-picker">
+              <legend>{{ labels.bindOutboundOrders }}</legend>
+              <label v-for="order in bindableOutboundOrders" :key="order.id">
+                <input v-model="shippingJobForm.outboundOrderIds" type="checkbox" :value="order.id">
+                <span>{{ order.orderNo }} / {{ outboundStatus(order.status) }}</span>
+              </label>
+              <span v-if="!bindableOutboundOrders.length" class="hint">{{ labels.noBindableOrders }}</span>
+            </fieldset>
+            <button class="primary" :disabled="loading.shippingJob">
+              {{ loading.shippingJob ? text.submitting : labels.createShippingJob }}
+            </button>
+          </form>
         </section>
 
         <section v-if="view === 'picking'" class="panel">
@@ -1099,6 +1159,7 @@ const pickingOrderNo = ref('')
 const activeReceiveOrderNo = ref('')
 const activeDetailOrderNo = ref('')
 const activeOutboundOrderId = ref(null)
+const shippingJobTab = ref('query')
 const shelfPreview = ref([])
 const qtyMode = ref('fixed')
 const errorField = ref('')
@@ -1139,6 +1200,7 @@ const loading = reactive({ login: false, shelf: false, receive: false, receiveSu
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
 const orderSearchFilters = reactive({ orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
+const shippingJobFilters = reactive({ jobNo: '', status: '', truckNo: '', plannedShipDate: '' })
 const receiveForm = reactive({ orderNo: '', locationCode: '', productCode: '', quantity: 1 })
 const orderForm = reactive({ type: 'PURCHASE', operatorName: '', receiverName: '', receiverPhone: '', address: '', reason: '', trackingNo: '', remark: '', items: [] })
 const shippingJobForm = reactive({
@@ -1170,6 +1232,16 @@ const boundShippingOrderIds = computed(() => new Set(
 const bindableOutboundOrders = computed(() => outboundOrders.value.filter(order =>
   order.status !== 'CANCELLED' && !boundShippingOrderIds.value.has(order.id)
 ))
+const filteredShippingJobs = computed(() => {
+  const jobNo = shippingJobFilters.jobNo.trim().toLowerCase()
+  const truckNo = shippingJobFilters.truckNo.trim().toLowerCase()
+  return [...shippingJobs.value]
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .filter(job => !jobNo || String(job.jobNo || '').toLowerCase().includes(jobNo))
+    .filter(job => !shippingJobFilters.status || job.status === shippingJobFilters.status)
+    .filter(job => !truckNo || String(job.truckNo || '').toLowerCase().includes(truckNo))
+    .filter(job => !shippingJobFilters.plannedShipDate || job.plannedShipDate === shippingJobFilters.plannedShipDate)
+})
 const currentWarehouse = computed(() => warehouses.value.find(warehouse => warehouse.id === selectedWarehouseId.value) || null)
 const stockByLocation = computed(() => stocks.value.reduce((map, stock) => {
   if (!map[stock.locationCode]) map[stock.locationCode] = []
@@ -1394,9 +1466,20 @@ async function loadShippingJobs() {
     selectedShippingJob.value = shippingJobs.value.find(job => job.id === selectedShippingJob.value.id) || null
   }
 }
+function resetShippingJobFilters() {
+  shippingJobFilters.jobNo = ''
+  shippingJobFilters.status = ''
+  shippingJobFilters.truckNo = ''
+  shippingJobFilters.plannedShipDate = ''
+}
 function shippingJobStatus(status) {
   if (locale.value === 'en') return { DRAFT: 'Draft', SCHEDULED: 'Scheduled', SHIPPED: 'Shipped', CANCELLED: 'Cancelled' }[status] || status
   return { DRAFT: '\u8349\u7a3f', SCHEDULED: '\u5df2\u6392\u8f66', SHIPPED: '\u5df2\u53d1\u8fd0', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
+}
+function formatDateTime(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? String(value).replace('T', ' ').slice(0, 19) : date.toLocaleString()
 }
 async function createShippingJob() {
   if (loading.shippingJob) return
@@ -1420,6 +1503,7 @@ async function createShippingJob() {
     shippingJobForm.remark = ''
     await loadShippingJobs()
     selectedShippingJob.value = shippingJobs.value.find(item => item.id === job.id) || job
+    shippingJobTab.value = 'query'
     showToast(locale.value === 'en' ? 'Shipping job created' : 'Shipping Job \u5df2\u521b\u5efa')
   } catch (e) {
     showToast(e.message, 'error')
