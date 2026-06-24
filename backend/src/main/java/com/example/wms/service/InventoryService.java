@@ -328,10 +328,10 @@ public class InventoryService {
     public OutboundOrderDetailView confirmOutbound(Long id, String operatorName) {
         OutboundOrder order = outboundOrderRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new BizException("出库单不存在"));
-        if (order.getStatus() != OrderStatus.PICKED) {
+        if (order.getStatus() != OrderStatus.PICKED && order.getStatus() != OrderStatus.PACKED) {
             if (order.getStatus() == OrderStatus.COMPLETED) throw new BizException("出库单已完成，不能重复确认");
             if (order.getStatus() == OrderStatus.CANCELLED) throw new BizException("出库单已取消，不能确认");
-            throw new BizException("请先完成拣货，再确认出库");
+            throw new BizException("请先完成拣货/打包，再确认出库");
         }
         for (OutboundOrderItem item : order.getItems()) {
             Stock stock = stockRepository.findForUpdate(item.getProduct().getId(), item.getWarehouse().getId(),

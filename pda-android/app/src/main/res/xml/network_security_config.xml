@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 仓库内网通常先用 HTTP 部署 PDA 页面；生产上有 HTTPS 后可以收紧这里。 -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

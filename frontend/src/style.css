@@ -236,6 +236,38 @@ label.disabled { opacity: .78; }
 .inspector-products span, .inspector-products p { color: #667085; }
 .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: calc(100vw - 28px); padding: 11px 14px; border-radius: 8px; color: #fff; background: #1f7a4d; box-shadow: 0 10px 24px rgba(15, 23, 42, .18); z-index: 10; }
 .toast.error { background: #c2410c; }
+.pda-app { min-height: 100vh; padding: 0; background: #0f172a; }
+.pda-login { min-height: 100vh; padding: 18px; }
+.pda-screen { min-height: 100vh; display: grid; align-content: start; gap: 12px; padding: 12px; color: #17202a; background: #eef2f6; }
+.pda-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px; border-radius: 14px; color: #fff; background: linear-gradient(135deg, #1769aa, #0f766e); }
+.pda-header span { opacity: .78; font-size: 12px; }
+.pda-header h1 { font-size: 20px; }
+.pda-header button { color: #fff; border-color: rgba(255,255,255,.45); background: rgba(255,255,255,.14); }
+.pda-card, .pda-order-card { display: grid; gap: 12px; padding: 14px; border: 1px solid #d8e1eb; border-radius: 14px; background: #fff; box-shadow: 0 8px 20px rgba(15, 23, 42, .08); }
+.pda-input { min-height: 54px; border-radius: 12px; font-size: 20px; font-weight: 800; letter-spacing: .02em; }
+.pda-input.scan { border-width: 2px; border-color: #1769aa; }
+.pda-job-title, .pda-order-card header, .pda-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pda-job-title span { color: #667085; font-size: 12px; }
+.pda-job-title h2 { font-size: 22px; }
+.pda-job-title b, .pda-order-card em { border-radius: 999px; padding: 5px 10px; color: #1769aa; background: #eef6fc; font-size: 12px; font-style: normal; }
+.pda-progress { display: grid; gap: 5px; }
+.pda-progress span { color: #667085; font-size: 12px; }
+.pda-progress b { font-size: 20px; }
+.pda-progress meter { width: 100%; height: 14px; }
+.pda-actions button { flex: 1; min-height: 48px; }
+.pda-message { margin: 0; padding: 11px 12px; border-radius: 10px; color: #16653f; background: #e7f8ee; font-weight: 700; }
+.pda-message.error { color: #b42318; background: #fff0ee; }
+.pda-orders { display: grid; gap: 12px; }
+.pda-order-card.done { border-color: #2e9d62; background: #f0fbf5; }
+.pda-order-card.partial { border-color: #f0b429; background: #fffaf0; }
+.pda-order-card.cancelled { opacity: .65; }
+.pda-order-card header b { font-size: 17px; }
+.pda-order-card header span { display: block; color: #667085; font-size: 12px; }
+.pda-items { display: grid; gap: 8px; }
+.pda-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: #f8fafc; }
+.pda-item b { font-size: 15px; }
+.pda-item span, .pda-item small { display: block; color: #667085; font-size: 12px; }
+.pda-item strong { min-width: 62px; text-align: right; font-size: 18px; color: #1769aa; }
 .ai-assistant { position: fixed; right: 22px; bottom: 22px; z-index: 20; }
 .ai-assistant-launcher { width: 58px; height: 58px; padding: 0; border: 0; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #1769aa, #5b4dd6); box-shadow: 0 12px 28px rgba(23, 105, 170, .35); font-weight: 800; font-size: 18px; }
 .ai-assistant-panel { width: min(390px, calc(100vw - 24px)); height: min(620px, calc(100vh - 40px)); display: grid; grid-template-rows: auto 1fr auto auto; overflow: hidden; border: 1px solid #ccd8e5; border-radius: 16px; background: #fff; box-shadow: 0 20px 55px rgba(15, 23, 42, .24); }

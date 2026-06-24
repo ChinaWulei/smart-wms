@@ -1,5 +1,86 @@
 <template>
-  <main class="app">
+  <main :class="['app', { 'pda-app': pdaMode }]">
+    <template v-if="pdaMode">
+      <section v-if="!user" class="login-page pda-login">
+        <form class="login-card" @submit.prevent="login">
+          <h1>PDA 发运扫码</h1>
+          <p>登录后扫描 Shipping Job 和商品条码</p>
+          <label>{{ text.account }}<input ref="loginUserRef" v-model.trim="loginForm.username" autocomplete="username"></label>
+          <label>{{ text.password }}<input v-model.trim="loginForm.password" type="password" autocomplete="current-password"></label>
+          <button class="primary wide" :disabled="loading.login">{{ loading.login ? text.loggingIn : text.login }}</button>
+        </form>
+      </section>
+      <section v-else class="pda-screen">
+        <header class="pda-header">
+          <div>
+            <span>{{ user.displayName || user.username }}</span>
+            <h1>PDA 发运扫码</h1>
+          </div>
+          <button @click="logout">{{ text.logout }}</button>
+        </header>
+
+        <section class="pda-card">
+          <label>Shipping Job 编号
+            <input ref="pdaJobInputRef" v-model.trim="pda.jobNo" class="pda-input"
+                   placeholder="SH-WHA-00000001" @keydown.enter.prevent="loadPdaJob">
+          </label>
+          <button class="primary wide" :disabled="pda.loading" @click="loadPdaJob">
+            {{ pda.loading ? '查询中…' : '查询 Shipping Job' }}
+          </button>
+        </section>
+
+        <section v-if="pda.job" class="pda-card pda-job">
+          <div class="pda-job-title">
+            <div>
+              <span>当前任务</span>
+              <h2>{{ pda.job.shippingJob.jobNo }}</h2>
+            </div>
+            <b>{{ shippingJobStatus(pda.job.shippingJob.status) }}</b>
+          </div>
+          <div class="pda-progress">
+            <span>完成进度</span>
+            <b>{{ pdaDoneCount }} / {{ pdaTotalCount }}</b>
+            <meter :value="pdaDoneCount" :max="Math.max(1, pdaTotalCount)"></meter>
+          </div>
+          <label>扫描 SKU / 条码
+            <input ref="pdaScanInputRef" v-model.trim="pda.scanCode" class="pda-input scan"
+                   autocomplete="off" placeholder="扫描商品条码"
+                   @keydown.enter.prevent="scanPdaItem">
+          </label>
+          <div class="pda-actions">
+            <button class="primary" :disabled="pda.loading || !pda.scanCode" @click="scanPdaItem">确认扫码</button>
+            <button :disabled="pda.loading" @click="loadPdaJob">刷新</button>
+            <button class="danger" :disabled="pda.loading || pdaDoneCount !== pdaTotalCount" @click="completePdaJob">
+              全部上车
+            </button>
+          </div>
+          <p v-if="pda.message" :class="['pda-message', pda.messageType]">{{ pda.message }}</p>
+        </section>
+
+        <section v-if="pda.job" class="pda-orders">
+          <article v-for="order in pda.job.orders" :key="order.id" :class="['pda-order-card', order.status.toLowerCase()]">
+            <header>
+              <div>
+                <b>{{ order.orderNo }}</b>
+                <span>{{ order.receiverName || '-' }}</span>
+              </div>
+              <em>{{ order.status }}</em>
+            </header>
+            <div class="pda-items">
+              <div v-for="item in order.items" :key="`${order.id}-${item.sku}`" class="pda-item">
+                <div>
+                  <b>{{ item.sku }}</b>
+                  <span>{{ item.productName }} / {{ item.locationCode || '-' }}</span>
+                  <small>{{ item.barcode || '-' }}</small>
+                </div>
+                <strong>{{ item.scannedQuantity || 0 }} / {{ item.requiredQuantity || 0 }}</strong>
+              </div>
+            </div>
+          </article>
+        </section>
+      </section>
+    </template>
+    <template v-else>
     <section v-if="!user" class="login-page">
       <form class="login-card" @submit.prevent="login">
         <select class="language-select" v-model="locale" @change="switchLanguage">
@@ -263,8 +344,9 @@
               <label>{{ locale === 'en' ? 'Status' : '状态' }}
                 <select v-model="shippingJobFilters.status">
                   <option value="">{{ locale === 'en' ? 'All' : '全部' }}</option>
-                  <option value="DRAFT">{{ shippingJobStatus('DRAFT') }}</option>
-                  <option value="SCHEDULED">{{ shippingJobStatus('SCHEDULED') }}</option>
+                  <option value="IN_QUEUE">{{ shippingJobStatus('IN_QUEUE') }}</option>
+                  <option value="READY_TO_SORT">{{ shippingJobStatus('READY_TO_SORT') }}</option>
+                  <option value="SORTING">{{ shippingJobStatus('SORTING') }}</option>
                   <option value="SHIPPED">{{ shippingJobStatus('SHIPPED') }}</option>
                   <option value="CANCELLED">{{ shippingJobStatus('CANCELLED') }}</option>
                 </select>
@@ -323,15 +405,15 @@
                   <span class="status-tag">{{ shippingJobStatus(selectedShippingJob.status) }}</span>
                 </div>
                 <div class="head-actions">
-                  <button v-if="selectedShippingJob.status === 'DRAFT'" class="primary" @click="runShippingJobAction('schedule')">{{ labels.scheduleJob }}</button>
-                  <button v-if="selectedShippingJob.status === 'SCHEDULED'" class="primary" @click="runShippingJobAction('ship')">{{ labels.markShipped }}</button>
-                  <button v-if="!['SHIPPED', 'CANCELLED'].includes(selectedShippingJob.status)" class="danger" @click="runShippingJobAction('cancel')">{{ labels.cancelJob }}</button>
+                  <button v-if="selectedShippingJob.status === 'IN_QUEUE'" class="primary" @click="runShippingJobAction('start-to-ship')">{{ labels.scheduleJob }}</button>
+                  <button v-if="selectedShippingJob.status === 'SHIPPED'" class="primary" @click="runShippingJobAction('complete')">Completed</button>
+                  <button v-if="!['SHIPPED', 'COMPLETED', 'CANCELLED'].includes(selectedShippingJob.status)" class="danger" @click="runShippingJobAction('cancel')">{{ labels.cancelJob }}</button>
                 </div>
               </div>
               <div class="detail-kv"><span>{{ labels.plannedShipDate }}</span><b>{{ selectedShippingJob.plannedShipDate }}</b></div>
               <div class="detail-kv"><span>{{ labels.truckNo }}</span><b>{{ selectedShippingJob.truckNo || '-' }}</b></div>
               <div class="detail-kv"><span>{{ labels.driverName }}</span><b>{{ selectedShippingJob.driverName || '-' }} / {{ selectedShippingJob.driverPhone || '-' }}</b></div>
-              <form v-if="selectedShippingJob.status === 'DRAFT' && bindableOutboundOrders.length"
+              <form v-if="selectedShippingJob.status === 'IN_QUEUE' && bindableOutboundOrders.length"
                     class="shipping-add-orders" @submit.prevent="addShippingOrders">
                 <label>{{ labels.addOutboundOrders }}
                   <select v-model="shippingOrdersToAdd" multiple>
@@ -348,7 +430,7 @@
                   <b>{{ order.orderNo }}</b>
                   <span>{{ outboundStatus(order.orderStatus) }} / {{ order.receiverName || '-' }}</span>
                 </div>
-                <button v-if="selectedShippingJob.status === 'DRAFT'" class="danger" @click="removeShippingOrder(order.orderId)">{{ labels.removeItem }}</button>
+                <button v-if="selectedShippingJob.status === 'IN_QUEUE'" class="danger" @click="removeShippingOrder(order.orderId)">{{ labels.removeItem }}</button>
               </article>
             </section>
           </section>
@@ -369,13 +451,17 @@
             <label class="shipping-job-remark">{{ labels.remark }}
               <input v-model.trim="shippingJobForm.remark">
             </label>
+            <label class="shipping-job-remark">订单号批量搜索
+              <textarea v-model.trim="shippingJobForm.orderNoSearch" rows="3" placeholder="每行一个订单号，也支持逗号或空格分隔"></textarea>
+            </label>
             <fieldset class="shipping-order-picker">
               <legend>{{ labels.bindOutboundOrders }}</legend>
-              <label v-for="order in bindableOutboundOrders" :key="order.id">
+              <button type="button" @click="selectShippingJobCandidateOrders">勾选当前结果</button>
+              <label v-for="order in shippingJobCandidateOrders" :key="order.id">
                 <input v-model="shippingJobForm.outboundOrderIds" type="checkbox" :value="order.id">
                 <span>{{ order.orderNo }} / {{ outboundStatus(order.status) }}</span>
               </label>
-              <span v-if="!bindableOutboundOrders.length" class="hint">{{ labels.noBindableOrders }}</span>
+              <span v-if="!shippingJobCandidateOrders.length" class="hint">{{ labels.noBindableOrders }}</span>
             </fieldset>
             <button class="primary" :disabled="loading.shippingJob">
               {{ loading.shippingJob ? text.submitting : labels.createShippingJob }}
@@ -835,6 +921,7 @@
       </section>
     </aside>
 
+    </template>
     <div v-if="toast.text" :class="['toast', toast.type]">{{ toast.text }}</div>
   </main>
 </template>
@@ -903,7 +990,7 @@ const labels = {
   noBindableOrders: '\u6682\u65e0\u53ef\u7ed1\u5b9a\u7684\u51fa\u5e93\u8ba2\u5355',
   noShippingJobs: '\u6682\u65e0 Shipping Job',
   ordersUnit: '\u4e2a\u8ba2\u5355',
-  scheduleJob: '\u786e\u8ba4\u6392\u8f66',
+  scheduleJob: 'Start to Ship',
   markShipped: '\u6807\u8bb0\u5df2\u53d1\u8fd0',
   cancelJob: '\u53d6\u6d88 Job',
   boundOrders: '\u5df2\u7ed1\u5b9a\u51fa\u5e93\u8ba2\u5355',
@@ -1058,7 +1145,7 @@ const englishLabels = {
   createShippingJob: 'New Shipping Job', plannedShipDate: 'Planned Ship Date', truckNo: 'Truck No.',
   truckNoPlaceholder: 'Required before scheduling', driverName: 'Driver', driverPhone: 'Driver Phone',
   bindOutboundOrders: 'Bind Outbound Orders', noBindableOrders: 'No outbound orders available',
-  noShippingJobs: 'No shipping jobs', ordersUnit: 'orders', scheduleJob: 'Schedule',
+  noShippingJobs: 'No shipping jobs', ordersUnit: 'orders', scheduleJob: 'Start to Ship',
   markShipped: 'Mark Shipped', cancelJob: 'Cancel Job', boundOrders: 'Bound Outbound Orders',
   addOutboundOrders: 'Add Outbound Orders', addSelectedOrders: 'Add Selected',
   createOutbound: 'New Outbound Order', outboundDetail: 'Outbound Order Details', confirmOutbound: 'Confirm Outbound',
@@ -1133,6 +1220,9 @@ function switchLanguage() {
 const user = ref(JSON.parse(localStorage.getItem('wms-user') || 'null'))
 const loginForm = reactive({ username: 'admin', password: '123456' })
 const loginUserRef = ref(null)
+const pdaMode = ref(window.location.pathname.startsWith('/pda'))
+const pdaJobInputRef = ref(null)
+const pdaScanInputRef = ref(null)
 const activeModule = ref('')
 const view = ref('home')
 const warehouses = ref([])
@@ -1166,6 +1256,14 @@ const errorField = ref('')
 const lastScan = reactive({ value: '', time: 0 })
 const scanTimers = {}
 const toast = reactive({ text: '', type: 'success' })
+const pda = reactive({
+  jobNo: '',
+  scanCode: '',
+  job: null,
+  loading: false,
+  message: '',
+  messageType: 'success'
+})
 const aiMessagesRef = ref(null)
 const aiAssistantRef = ref(null)
 const savedAiPosition = loadAiPosition()
@@ -1209,6 +1307,7 @@ const shippingJobForm = reactive({
   driverName: '',
   driverPhone: '',
   remark: '',
+  orderNoSearch: '',
   outboundOrderIds: []
 })
 const scanResult = reactive({ location: null, product: null })
@@ -1232,6 +1331,15 @@ const boundShippingOrderIds = computed(() => new Set(
 const bindableOutboundOrders = computed(() => outboundOrders.value.filter(order =>
   order.status !== 'CANCELLED' && !boundShippingOrderIds.value.has(order.id)
 ))
+const shippingJobSearchOrderNos = computed(() => shippingJobForm.orderNoSearch
+  .split(/[\s,，]+/)
+  .map(item => item.trim().toLowerCase())
+  .filter(Boolean))
+const shippingJobCandidateOrders = computed(() => {
+  if (!shippingJobSearchOrderNos.value.length) return bindableOutboundOrders.value
+  return bindableOutboundOrders.value.filter(order =>
+    shippingJobSearchOrderNos.value.includes(String(order.orderNo || '').toLowerCase()))
+})
 const filteredShippingJobs = computed(() => {
   const jobNo = shippingJobFilters.jobNo.trim().toLowerCase()
   const truckNo = shippingJobFilters.truckNo.trim().toLowerCase()
@@ -1242,6 +1350,10 @@ const filteredShippingJobs = computed(() => {
     .filter(job => !truckNo || String(job.truckNo || '').toLowerCase().includes(truckNo))
     .filter(job => !shippingJobFilters.plannedShipDate || job.plannedShipDate === shippingJobFilters.plannedShipDate)
 })
+const pdaTotalCount = computed(() => pda.job?.orders?.reduce((total, order) =>
+  total + (order.items || []).reduce((sum, item) => sum + Number(item.requiredQuantity || 0), 0), 0) || 0)
+const pdaDoneCount = computed(() => pda.job?.orders?.reduce((total, order) =>
+  total + (order.items || []).reduce((sum, item) => sum + Number(item.scannedQuantity || 0), 0), 0) || 0)
 const currentWarehouse = computed(() => warehouses.value.find(warehouse => warehouse.id === selectedWarehouseId.value) || null)
 const stockByLocation = computed(() => stocks.value.reduce((map, stock) => {
   if (!map[stock.locationCode]) map[stock.locationCode] = []
@@ -1308,6 +1420,10 @@ async function login() {
     localStorage.removeItem('wms-warehouse-id')
     selectedWarehouseId.value = null
     await Promise.all([loadWarehouses(), loadProducts()])
+    if (pdaMode.value) {
+      await nextTick()
+      pdaJobInputRef.value?.focus()
+    }
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
@@ -1466,6 +1582,66 @@ async function loadShippingJobs() {
     selectedShippingJob.value = shippingJobs.value.find(job => job.id === selectedShippingJob.value.id) || null
   }
 }
+async function loadPdaJob() {
+  if (!pda.jobNo || pda.loading) return
+  pda.loading = true
+  pda.message = ''
+  try {
+    pda.job = await api.get(`/pda/shipping-jobs/${encodeURIComponent(pda.jobNo)}`)
+    pda.jobNo = pda.job.shippingJob.jobNo
+    pdaMessage('Shipping Job 已加载', 'success')
+    await nextTick()
+    pdaScanInputRef.value?.focus()
+  } catch (e) {
+    pda.job = null
+    pdaMessage(e.message, 'error')
+    await nextTick()
+    pdaJobInputRef.value?.focus()
+  } finally {
+    pda.loading = false
+  }
+}
+async function scanPdaItem() {
+  if (!pda.job || !pda.scanCode || pda.loading) return
+  pda.loading = true
+  try {
+    const response = await api.post(`/pda/shipping-jobs/${encodeURIComponent(pda.job.shippingJob.jobNo)}/scan`, {
+      code: pda.scanCode,
+      quantity: 1,
+      operatorName: user.value?.displayName || user.value?.username || ''
+    })
+    pda.job = response.job
+    pda.scanCode = ''
+    pdaMessage(response.message || '扫码成功', 'success')
+    navigator.vibrate?.(50)
+    await nextTick()
+    pdaScanInputRef.value?.focus()
+  } catch (e) {
+    pdaMessage(e.message, 'error')
+    navigator.vibrate?.([80, 40, 80])
+    await nextTick()
+    pdaScanInputRef.value?.select?.()
+  } finally {
+    pda.loading = false
+  }
+}
+async function completePdaJob() {
+  if (!pda.job || pda.loading) return
+  pda.loading = true
+  try {
+    pda.job = await api.post(`/pda/shipping-jobs/${encodeURIComponent(pda.job.shippingJob.jobNo)}/complete`)
+    pdaMessage('全部上车完成，Job 已 Shipped', 'success')
+    navigator.vibrate?.(80)
+  } catch (e) {
+    pdaMessage(e.message, 'error')
+  } finally {
+    pda.loading = false
+  }
+}
+function pdaMessage(message, type = 'success') {
+  pda.message = message
+  pda.messageType = type
+}
 function resetShippingJobFilters() {
   shippingJobFilters.jobNo = ''
   shippingJobFilters.status = ''
@@ -1473,8 +1649,8 @@ function resetShippingJobFilters() {
   shippingJobFilters.plannedShipDate = ''
 }
 function shippingJobStatus(status) {
-  if (locale.value === 'en') return { DRAFT: 'Draft', SCHEDULED: 'Scheduled', SHIPPED: 'Shipped', CANCELLED: 'Cancelled' }[status] || status
-  return { DRAFT: '\u8349\u7a3f', SCHEDULED: '\u5df2\u6392\u8f66', SHIPPED: '\u5df2\u53d1\u8fd0', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
+  if (locale.value === 'en') return { DRAFT: 'In Queue', SCHEDULED: 'Ready to Sort', IN_QUEUE: 'In Queue', READY_TO_SORT: 'Ready to Sort', SORTING: 'Sorting', SHIPPED: 'Shipped', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }[status] || status
+  return { DRAFT: 'In Queue', SCHEDULED: 'Ready to Sort', IN_QUEUE: 'In Queue', READY_TO_SORT: 'Ready to Sort', SORTING: 'Sorting', SHIPPED: 'Shipped', COMPLETED: 'Completed', CANCELLED: '\u5df2\u53d6\u6d88' }[status] || status
 }
 function formatDateTime(value) {
   if (!value) return '-'
@@ -1501,6 +1677,7 @@ async function createShippingJob() {
     shippingJobForm.driverName = ''
     shippingJobForm.driverPhone = ''
     shippingJobForm.remark = ''
+    shippingJobForm.orderNoSearch = ''
     await loadShippingJobs()
     selectedShippingJob.value = shippingJobs.value.find(item => item.id === job.id) || job
     shippingJobTab.value = 'query'
@@ -1510,6 +1687,9 @@ async function createShippingJob() {
   } finally {
     loading.shippingJob = false
   }
+}
+function selectShippingJobCandidateOrders() {
+  shippingJobForm.outboundOrderIds = shippingJobCandidateOrders.value.map(order => order.id)
 }
 async function runShippingJobAction(action) {
   if (!selectedShippingJob.value || loading.shippingJob) return
@@ -2088,8 +2268,8 @@ function locationStatus(l) {
 }
 function orderStatus(status) {
   const map = locale.value === 'en'
-    ? { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', NOT_ENOUGH_INV: 'Not Enough Inv', READY_TO_PICK: 'Ready to Pick', PICKING: 'Picking', PICKED: 'Picked', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }
-    : { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', NOT_ENOUGH_INV: 'Not Enough Inv', READY_TO_PICK: 'Ready to Pick', PICKING: '\u62e3\u8d27\u4e2d', PICKED: '\u62e3\u8d27\u5b8c\u6210', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }
+    ? { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', NOT_ENOUGH_INV: 'Not Enough Inv', READY_TO_PICK: 'Ready to Pick', PICKING: 'Picking', PICKED: 'Picked', PACKED: 'Packed', COMPLETED: 'Completed', CANCELLED: 'Cancelled' }
+    : { CREATED: 'In Queue', IN_QUEUE: 'In Queue', RECEIVING: 'Receiving', RECEIVED: 'Received', ALLOCATED: 'Allocated', NOT_ENOUGH_INV: 'Not Enough Inv', READY_TO_PICK: 'Ready to Pick', PICKING: '\u62e3\u8d27\u4e2d', PICKED: '\u62e3\u8d27\u5b8c\u6210', PACKED: 'Packed', COMPLETED: '\u5df2\u5b8c\u6210', CANCELLED: '\u5df2\u53d6\u6d88' }
   return map[status] || status
 }
 function createAiSessionId() {
@@ -2274,6 +2454,15 @@ function typeName(type) {
 
 onMounted(async () => {
   switchLanguage()
+  if (pdaMode.value) {
+    if (user.value) {
+      await nextTick()
+      pdaJobInputRef.value?.focus()
+    } else {
+      nextTick(() => loginUserRef.value?.focus())
+    }
+    return
+  }
   window.addEventListener('pointermove', moveAiDrag)
   window.addEventListener('pointerup', stopAiDrag)
   window.addEventListener('pointercancel', stopAiDrag)

@@ -6,14 +6,17 @@ import com.example.wms.domain.OutboundOrderItem;
 import com.example.wms.domain.enums.OrderStatus;
 import com.example.wms.repository.OutboundOrderRepository;
 import com.example.wms.repository.WarehouseRepository;
+import com.example.wms.service.InventoryService;
 import com.example.wms.shipping.ShippingJob.ShippingOrderRef;
 import com.example.wms.shipping.ShippingJobDtos.CreateShippingJobRequest;
 import com.example.wms.shipping.ShippingJobDtos.UpdateShippingJobRequest;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,15 +25,21 @@ import org.springframework.util.StringUtils;
 @Service
 public class ShippingJobService {
     private final ShippingJobRepository shippingJobRepository;
+    private final ShippingOrderRepository shippingOrderRepository;
     private final OutboundOrderRepository outboundOrderRepository;
     private final WarehouseRepository warehouseRepository;
+    private final InventoryService inventoryService;
 
     public ShippingJobService(ShippingJobRepository shippingJobRepository,
+                              ShippingOrderRepository shippingOrderRepository,
                               OutboundOrderRepository outboundOrderRepository,
-                              WarehouseRepository warehouseRepository) {
+                              WarehouseRepository warehouseRepository,
+                              InventoryService inventoryService) {
         this.shippingJobRepository = shippingJobRepository;
+        this.shippingOrderRepository = shippingOrderRepository;
         this.outboundOrderRepository = outboundOrderRepository;
         this.warehouseRepository = warehouseRepository;
+        this.inventoryService = inventoryService;
     }
 
     @Transactional
@@ -52,7 +61,9 @@ public class ShippingJobService {
         job.setCreatedBy(trim(request.createdBy()));
         touchForCreate(job, now);
         attachOrders(job, request.outboundOrderIds());
-        return shippingJobRepository.save(job);
+        ShippingJob saved = shippingJobRepository.save(job);
+        syncShippingOrders(saved);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -84,7 +95,9 @@ public class ShippingJobService {
         ShippingJob job = editable(id);
         attachOrders(job, orderIds);
         touchForUpdate(job);
-        return shippingJobRepository.save(job);
+        ShippingJob saved = shippingJobRepository.save(job);
+        syncShippingOrders(saved);
+        return saved;
     }
 
     @Transactional
@@ -93,38 +106,26 @@ public class ShippingJobService {
         boolean removed = job.getOrders().removeIf(order -> orderId.equals(order.getOrderId()));
         if (!removed) throw new BizException("Outbound order is not bound to this shipping job");
         touchForUpdate(job);
+        shippingOrderRepository.deleteByShippingJobIdAndOrderId(job.getId(), orderId);
         return shippingJobRepository.save(job);
     }
 
     @Transactional
-    public ShippingJob schedule(String id) {
+    public ShippingJob startToShip(String id) {
         ShippingJob job = editable(id);
         if (job.getOrders().isEmpty()) throw new BizException("Shipping job must contain at least one outbound order");
-        if (!StringUtils.hasText(job.getTruckNo())) throw new BizException("Truck number is required before scheduling");
-        job.setStatus(ShippingJobStatus.SCHEDULED);
-        touchForUpdate(job);
-        return shippingJobRepository.save(job);
-    }
-
-    @Transactional
-    public ShippingJob ship(String id) {
-        ShippingJob job = find(id);
-        if (job.getStatus() != ShippingJobStatus.SCHEDULED) {
-            throw new BizException("Only a scheduled shipping job can be shipped");
-        }
         List<OutboundOrder> orders = outboundOrderRepository.findAllById(
                 job.getOrders().stream().map(ShippingOrderRef::getOrderId).toList());
         if (orders.size() != job.getOrders().size()) throw new BizException("Some outbound orders no longer exist");
-        List<String> unfinished = orders.stream()
-                .filter(order -> order.getStatus() != OrderStatus.COMPLETED)
+        List<String> notPacked = orders.stream()
+                .filter(order -> !isPacked(order.getStatus()))
                 .map(OutboundOrder::getOrderNo)
                 .toList();
-        if (!unfinished.isEmpty()) {
-            throw new BizException("Outbound orders must be completed before shipping: " + String.join(", ", unfinished));
+        if (!notPacked.isEmpty()) {
+            throw new BizException("以下订单还未 Packed，不能 Start to Ship: " + String.join(", ", notPacked));
         }
         refreshOrderSnapshots(job, orders);
-        job.setStatus(ShippingJobStatus.SHIPPED);
-        job.setShippedAt(LocalDateTime.now());
+        job.setStatus(ShippingJobStatus.READY_TO_SORT);
         touchForUpdate(job);
         return shippingJobRepository.save(job);
     }
@@ -132,18 +133,44 @@ public class ShippingJobService {
     @Transactional
     public ShippingJob cancel(String id) {
         ShippingJob job = find(id);
-        if (job.getStatus() == ShippingJobStatus.SHIPPED) {
-            throw new BizException("A shipped job cannot be cancelled");
+        if (job.getStatus() == ShippingJobStatus.COMPLETED) {
+            throw new BizException("A completed job cannot be cancelled");
         }
         job.setStatus(ShippingJobStatus.CANCELLED);
+        touchForUpdate(job);
+        for (ShippingOrder order : shippingOrderRepository.findByShippingJobIdOrderByOrderNoAsc(job.getId())) {
+            order.setStatus(ShippingOrderStatus.CANCELLED);
+            order.setUpdatedAt(LocalDateTime.now());
+            shippingOrderRepository.save(order);
+        }
+        return shippingJobRepository.save(job);
+    }
+
+    @Transactional
+    public ShippingJob complete(String id, String operatorName) {
+        ShippingJob job = find(id);
+        if (job.getStatus() != ShippingJobStatus.SHIPPED) {
+            throw new BizException("Only a Shipped shipping job can be completed");
+        }
+        List<ShippingOrder> shippingOrders = shippingOrderRepository.findByShippingJobIdOrderByOrderNoAsc(job.getId());
+        if (shippingOrders.isEmpty()) throw new BizException("Shipping job has no shipping orders");
+        boolean allDone = shippingOrders.stream().allMatch(order -> order.getStatus() == ShippingOrderStatus.DONE);
+        if (!allDone) throw new BizException("还有货物未全部上车，不能 Completed");
+        for (ShippingOrder shippingOrder : shippingOrders) {
+            inventoryService.confirmOutbound(shippingOrder.getOrderId(), operatorName);
+        }
+        List<OutboundOrder> outboundOrders = outboundOrderRepository.findAllById(
+                shippingOrders.stream().map(ShippingOrder::getOrderId).toList());
+        refreshOrderSnapshots(job, outboundOrders);
+        job.setStatus(ShippingJobStatus.COMPLETED);
         touchForUpdate(job);
         return shippingJobRepository.save(job);
     }
 
     private ShippingJob editable(String id) {
         ShippingJob job = find(id);
-        if (job.getStatus() != ShippingJobStatus.DRAFT) {
-            throw new BizException("Only a draft shipping job can be edited");
+        if (job.getStatus() != ShippingJobStatus.IN_QUEUE && job.getStatus() != ShippingJobStatus.DRAFT) {
+            throw new BizException("Only an In Queue shipping job can be edited");
         }
         return job;
     }
@@ -203,6 +230,7 @@ public class ShippingJobService {
     private void refreshOrderSnapshots(ShippingJob job, List<OutboundOrder> orders) {
         var byId = orders.stream().collect(java.util.stream.Collectors.toMap(OutboundOrder::getId, order -> order));
         job.setOrders(job.getOrders().stream().map(ref -> snapshot(byId.get(ref.getOrderId()))).toList());
+        syncShippingOrders(job, orders);
     }
 
     private Long nextSequence(String warehouseCode3) {
@@ -232,6 +260,86 @@ public class ShippingJobService {
 
     private void touchForUpdate(ShippingJob job) {
         job.setUpdatedAt(LocalDateTime.now());
+    }
+
+    private void syncShippingOrders(ShippingJob job) {
+        if (job.getId() == null || job.getOrders().isEmpty()) return;
+        List<Long> orderIds = job.getOrders().stream().map(ShippingOrderRef::getOrderId).toList();
+        syncShippingOrders(job, outboundOrderRepository.findAllById(orderIds));
+    }
+
+    private void syncShippingOrders(ShippingJob job, List<OutboundOrder> orders) {
+        if (job.getId() == null) return;
+        LocalDateTime now = LocalDateTime.now();
+        Set<Long> currentIds = job.getOrders().stream().map(ShippingOrderRef::getOrderId)
+                .collect(java.util.stream.Collectors.toSet());
+        List<Long> storedIds = shippingOrderRepository.findByShippingJobIdOrderByOrderNoAsc(job.getId())
+                .stream().map(ShippingOrder::getOrderId).toList();
+        List<Long> removedIds = storedIds.stream().filter(id -> !currentIds.contains(id)).toList();
+        if (!removedIds.isEmpty()) {
+            shippingOrderRepository.deleteByShippingJobIdAndOrderIdIn(job.getId(), removedIds);
+        }
+        for (OutboundOrder outboundOrder : orders) {
+            ShippingOrder shippingOrder = shippingOrderRepository
+                    .findByShippingJobIdAndOrderId(job.getId(), outboundOrder.getId())
+                    .orElseGet(ShippingOrder::new);
+            if (shippingOrder.getCreatedAt() == null) shippingOrder.setCreatedAt(now);
+            shippingOrder.setUpdatedAt(now);
+            shippingOrder.setShippingJobId(job.getId());
+            shippingOrder.setJobNo(job.getJobNo());
+            shippingOrder.setOrderId(outboundOrder.getId());
+            shippingOrder.setOrderNo(outboundOrder.getOrderNo());
+            shippingOrder.setWarehouseId(job.getWarehouseId());
+            shippingOrder.setReceiverName(outboundOrder.getReceiverName());
+            shippingOrder.setReceiverPhone(outboundOrder.getReceiverPhone());
+            shippingOrder.setAddress(outboundOrder.getAddress());
+            if (shippingOrder.getStatus() == null || shippingOrder.getStatus() == ShippingOrderStatus.CANCELLED) {
+                shippingOrder.setStatus(ShippingOrderStatus.PENDING);
+            }
+            Map<String, Integer> scannedBySku = new HashMap<>();
+            for (ShippingOrder.Item item : shippingOrder.getItems()) {
+                scannedBySku.put(item.getSku(), item.getScannedQuantity());
+            }
+            shippingOrder.setItems(outboundOrder.getItems().stream()
+                    .map(item -> shippingItem(item, scannedBySku))
+                    .toList());
+            updateShippingOrderStatus(shippingOrder);
+            shippingOrderRepository.save(shippingOrder);
+        }
+    }
+
+    private ShippingOrder.Item shippingItem(OutboundOrderItem item, Map<String, Integer> scannedBySku) {
+        ShippingOrder.Item result = new ShippingOrder.Item();
+        result.setProductId(item.getProduct().getId());
+        result.setSku(item.getProduct().getSku());
+        result.setBarcode(item.getProduct().getBarcode());
+        result.setProductName(item.getProduct().getName());
+        result.setLocationCode(item.getLocation().getCode());
+        result.setRequiredQuantity(item.getQuantity() == null ? 0 : item.getQuantity());
+        result.setScannedQuantity(scannedBySku.getOrDefault(result.getSku(), 0));
+        return result;
+    }
+
+    static void updateShippingOrderStatus(ShippingOrder order) {
+        boolean anyScanned = order.getItems().stream()
+                .anyMatch(item -> safe(item.getScannedQuantity()) > 0);
+        boolean allDone = !order.getItems().isEmpty() && order.getItems().stream()
+                .allMatch(item -> safe(item.getScannedQuantity()) >= safe(item.getRequiredQuantity()));
+        if (allDone) {
+            order.setStatus(ShippingOrderStatus.DONE);
+            if (order.getCompletedAt() == null) order.setCompletedAt(LocalDateTime.now());
+        } else {
+            order.setStatus(anyScanned ? ShippingOrderStatus.PARTIAL : ShippingOrderStatus.PENDING);
+            order.setCompletedAt(null);
+        }
+    }
+
+    static int safe(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    static boolean isPacked(OrderStatus status) {
+        return status == OrderStatus.PACKED || status == OrderStatus.PICKED;
     }
 
     private String trim(String value) {

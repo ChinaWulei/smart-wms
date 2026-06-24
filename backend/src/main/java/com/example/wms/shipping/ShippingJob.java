@@ -36,7 +36,7 @@ public class ShippingJob {
     private String truckNo;
     private String driverName;
     private String driverPhone;
-    private ShippingJobStatus status = ShippingJobStatus.DRAFT;
+    private ShippingJobStatus status = ShippingJobStatus.IN_QUEUE;
     private List<ShippingOrderRef> orders = new ArrayList<>();
     private String remark;
     private String createdBy;

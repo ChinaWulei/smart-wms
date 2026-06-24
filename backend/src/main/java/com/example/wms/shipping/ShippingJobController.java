@@ -56,18 +56,24 @@ public class ShippingJobController {
         return ApiResponse.ok(shippingJobService.removeOrder(id, orderId));
     }
 
-    @PostMapping("/{id}/schedule")
-    public ApiResponse<ShippingJob> schedule(@PathVariable String id) {
-        return ApiResponse.ok(shippingJobService.schedule(id));
+    @PostMapping("/{id}/start-to-ship")
+    public ApiResponse<ShippingJob> startToShip(@PathVariable String id) {
+        return ApiResponse.ok(shippingJobService.startToShip(id));
     }
 
-    @PostMapping("/{id}/ship")
-    public ApiResponse<ShippingJob> ship(@PathVariable String id) {
-        return ApiResponse.ok(shippingJobService.ship(id));
+    @PostMapping("/{id}/schedule")
+    public ApiResponse<ShippingJob> schedule(@PathVariable String id) {
+        return ApiResponse.ok(shippingJobService.startToShip(id));
     }
 
     @PostMapping("/{id}/cancel")
     public ApiResponse<ShippingJob> cancel(@PathVariable String id) {
         return ApiResponse.ok(shippingJobService.cancel(id));
+    }
+
+    @PostMapping("/{id}/complete")
+    public ApiResponse<ShippingJob> complete(@PathVariable String id,
+                                             @RequestParam(required = false) String operatorName) {
+        return ApiResponse.ok(shippingJobService.complete(id, operatorName));
     }
 }

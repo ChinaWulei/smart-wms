@@ -1,0 +1,24 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.example.smartwmspda"
+    compileSdk 35
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    defaultConfig {
+        applicationId "com.example.smartwmspda"
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0"
+
+        // 真机 PDA 使用时，把这里改成仓库内网后端地址，例如：
+        // "http://192.168.1.20:8080/api"
+        buildConfigField "String", "API_BASE_URL", "\"http://10.0.2.2:8080/api\""
+    }
+}

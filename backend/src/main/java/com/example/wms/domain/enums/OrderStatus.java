@@ -10,6 +10,7 @@ public enum OrderStatus {
     READY_TO_PICK,
     PICKING,
     PICKED,
+    PACKED,
     COMPLETED,
     CANCELLED
 }
