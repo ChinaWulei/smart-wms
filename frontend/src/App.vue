@@ -294,6 +294,7 @@
               <b>{{ minute.count }}</b>
               <span>{{ minute.minute }}</span>
             </article>
+            <div v-if="!realtimeMinutes.length" class="realtime-empty">{{ labels.noOrders }}</div>
           </div>
 
           <div class="table-wrap realtime-orders">
@@ -315,6 +316,9 @@
                     </div>
                     <span v-else class="muted">-</span>
                   </td>
+                </tr>
+                <tr v-if="!realtimeMinutes.length">
+                  <td colspan="3" class="table-empty">{{ labels.noOrders }}</td>
                 </tr>
               </tbody>
             </table>
@@ -1026,13 +1030,13 @@ const labels = {
   orderSearch: '\u8ba2\u5355\u641c\u7d22',
   orderSearchHint: '\u6309\u8ba2\u5355\u72b6\u6001\u3001\u521b\u5efa\u65e5\u671f\u548c\u521b\u5efa\u4eba\u7b5b\u9009\u5165\u5e93\u53ca\u51fa\u5e93\u8ba2\u5355',
   realtimeWarehouse: '\u5b9e\u65f6\u6570\u4ed3\u9762\u677f',
-  realtimeWarehouseHint: '\u57fa\u4e8e Flink \u5b9e\u65f6\u6570\u4ed3\u7684 ODS\u3001DWD\u3001DWS\u3001ADS \u5206\u5c42\uff0c\u5c55\u793a\u8fde\u7eed 10 \u5206\u949f Q \u72b6\u6001\u8ba2\u5355',
+  realtimeWarehouseHint: '\u57fa\u4e8e Flink \u5b9e\u65f6\u6570\u4ed3\u7684 ODS\u3001DWD\u3001DWS\u3001ADS \u5206\u5c42\uff0c\u7edf\u8ba1\u521b\u5efa\u6ee1 10 \u5206\u949f\u4ecd\u7136\u662f Q \u72b6\u6001\u7684\u79ef\u538b\u8ba2\u5355',
   refreshedAt: '\u5237\u65b0\u65f6\u95f4',
   refreshing: '\u5237\u65b0\u4e2d...',
-  monitorWindow: '\u76d1\u63a7\u7a97\u53e3',
+  monitorWindow: '\u5f02\u5e38\u9608\u503c',
   qStatus: 'Q \u72b6\u6001',
-  qOrderCount: 'Q \u72b6\u6001\u8ba2\u5355\u6570',
-  minute: '\u5206\u949f',
+  qOrderCount: '\u79ef\u538b\u8ba2\u5355\u6570',
+  minute: '\u521b\u5efa\u65f6\u95f4',
   orderNo: '\u8ba2\u5355\u53f7',
   orderNoPlaceholder: '\u8f93\u5165\u8ba2\u5355\u53f7',
   direction: '\u8ba2\u5355\u65b9\u5411',
@@ -1213,9 +1217,9 @@ const englishText = {
 }
 const englishLabels = {
   orderSearch: 'Order Search', orderSearchHint: 'Filter inbound and outbound orders by status, creation date, and creator',
-  realtimeWarehouse: 'Realtime Warehouse Data', realtimeWarehouseHint: 'Flink realtime warehouse layers ODS, DWD, DWS, and ADS for Q status orders in the last 10 minutes',
-  refreshedAt: 'Refreshed', refreshing: 'Refreshing...', monitorWindow: 'Window', qStatus: 'Q Status',
-  qOrderCount: 'Q Orders', minute: 'Minute',
+  realtimeWarehouse: 'Realtime Warehouse Data', realtimeWarehouseHint: 'Flink realtime warehouse layers ODS, DWD, DWS, and ADS for orders that remain Q after 10 minutes',
+  refreshedAt: 'Refreshed', refreshing: 'Refreshing...', monitorWindow: 'Alert Threshold', qStatus: 'Q Status',
+  qOrderCount: 'Backlog Orders', minute: 'Created At',
   orderNo: 'Order No.', orderNoPlaceholder: 'Enter order number', direction: 'Direction', allDirections: 'All Directions',
   inbound: 'Inbound', outbound: 'Outbound', creator: 'Creator', creatorPlaceholder: 'Enter creator',
   createdFrom: 'Created From', createdTo: 'Created To', createdAt: 'Created At', itemCount: 'SKU Count',
@@ -1407,16 +1411,16 @@ const warehouseLayers = computed(() => locale.value === 'en'
   ? [
       { key: 'ODS', label: 'Source Capture', detail: 'Raw order events' },
       { key: 'DWD', label: 'Clean Detail', detail: 'Status Q normalized' },
-      { key: 'DWS', label: 'Minute Aggregate', detail: '10 minute window' },
+      { key: 'DWS', label: 'Backlog Aggregate', detail: '10 minute threshold' },
       { key: 'ADS', label: 'Panel Serving', detail: 'Dashboard query' }
     ]
   : [
       { key: 'ODS', label: '\u539f\u59cb\u6570\u636e\u5c42', detail: '\u8ba2\u5355\u539f\u59cb\u4e8b\u4ef6' },
       { key: 'DWD', label: '\u660e\u7ec6\u6570\u636e\u5c42', detail: 'Q \u72b6\u6001\u6e05\u6d17' },
-      { key: 'DWS', label: '\u6c47\u603b\u6570\u636e\u5c42', detail: '10 \u5206\u949f\u7a97\u53e3' },
+      { key: 'DWS', label: '\u6c47\u603b\u6570\u636e\u5c42', detail: '10 \u5206\u949f\u9608\u503c' },
       { key: 'ADS', label: '\u5e94\u7528\u6570\u636e\u5c42', detail: '\u9762\u677f\u67e5\u8be2' }
     ])
-const realtimeMinutes = computed(() => realtimePanel.value.minutes?.length ? realtimePanel.value.minutes : emptyRealtimeMinutes())
+const realtimeMinutes = computed(() => realtimePanel.value.minutes || [])
 const maxRealtimeCount = computed(() => Math.max(1, ...realtimeMinutes.value.map(item => item.count || 0)))
 const pickingOrders = computed(() => outboundOrders.value.filter(order => ['READY_TO_PICK', 'PICKING', 'PICKED'].includes(order.status)))
 const filteredPickingOrders = computed(() => {

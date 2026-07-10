@@ -183,27 +183,24 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public RealtimeWarehousePanelView realtimeWarehousePanel(Long warehouseId) {
         LocalDateTime refreshedAt = LocalDateTime.now();
-        LocalDateTime endMinute = refreshedAt.truncatedTo(ChronoUnit.MINUTES);
-        LocalDateTime startMinute = endMinute.minusMinutes(9);
-        RealtimeWarehousePanelView clickHouseView = realtimeWarehousePanelFromClickHouse(warehouseId, refreshedAt, startMinute);
+        LocalDateTime cutoff = refreshedAt.minusMinutes(10);
+        RealtimeWarehousePanelView clickHouseView = realtimeWarehousePanelFromClickHouse(warehouseId, refreshedAt, cutoff);
         if (clickHouseView != null) return clickHouseView;
-        Map<LocalDateTime, List<String>> ordersByMinute = new LinkedHashMap<>();
-        for (int i = 0; i < 10; i++) {
-            ordersByMinute.put(startMinute.plusMinutes(i), new java.util.ArrayList<>());
-        }
+        Map<String, List<String>> ordersByCreatedMinute = new LinkedHashMap<>();
+        DateTimeFormatter minuteFormat = DateTimeFormatter.ofPattern("MM-dd HH:mm");
         outboundOrderRepository.findAll().stream()
                 .filter(order -> warehouseId == null || order.getItems().stream()
                         .anyMatch(item -> item.getWarehouse().getId().equals(warehouseId)))
                 .filter(order -> isQStatus(order.getStatus()))
                 .filter(order -> order.getCreatedAt() != null)
+                .filter(order -> !order.getCreatedAt().isAfter(cutoff))
                 .forEach(order -> {
-                    LocalDateTime minute = order.getCreatedAt().truncatedTo(ChronoUnit.MINUTES);
-                    List<String> orderNos = ordersByMinute.get(minute);
-                    if (orderNos != null) orderNos.add(order.getOrderNo());
+                    String createdMinute = order.getCreatedAt().truncatedTo(ChronoUnit.MINUTES).format(minuteFormat);
+                    ordersByCreatedMinute.computeIfAbsent(createdMinute, ignored -> new java.util.ArrayList<>())
+                            .add(order.getOrderNo());
                 });
-        DateTimeFormatter minuteFormat = DateTimeFormatter.ofPattern("HH:mm");
-        List<RealtimeQOrderView> minutes = ordersByMinute.entrySet().stream()
-                .map(entry -> new RealtimeQOrderView(entry.getKey().format(minuteFormat),
+        List<RealtimeQOrderView> minutes = ordersByCreatedMinute.entrySet().stream()
+                .map(entry -> new RealtimeQOrderView(entry.getKey(),
                         entry.getValue().size(), entry.getValue()))
                 .toList();
         int totalCount = minutes.stream().mapToInt(RealtimeQOrderView::count).sum();
@@ -211,22 +208,19 @@ public class InventoryService {
     }
 
     private RealtimeWarehousePanelView realtimeWarehousePanelFromClickHouse(Long warehouseId, LocalDateTime refreshedAt,
-                                                                            LocalDateTime startMinute) {
+                                                                            LocalDateTime cutoff) {
         if (blank(clickHouseUrl)) return null;
         try {
-            Map<LocalDateTime, List<String>> ordersByMinute = new LinkedHashMap<>();
-            for (int i = 0; i < 10; i++) {
-                ordersByMinute.put(startMinute.plusMinutes(i), new java.util.ArrayList<>());
-            }
-            String start = startMinute.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            Map<String, List<String>> ordersByCreatedMinute = new LinkedHashMap<>();
+            String cutoffText = cutoff.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
             String warehouseFilter = warehouseId == null ? "" : " and warehouse_id = " + warehouseId;
             String query = """
-                    select toString(minute), order_no
+                    select toString(toStartOfMinute(created_at)), order_no
                     from ads_q_order_10m
-                    where status_code = 'Q' and minute >= toDateTime('%s')%s
-                    order by minute, order_no
+                    where status_code = 'Q' and created_at <= toDateTime('%s')%s
+                    order by created_at, order_no
                     format TabSeparated
-                    """.formatted(start, warehouseFilter);
+                    """.formatted(cutoffText, warehouseFilter);
             HttpRequest request = HttpRequest.newBuilder(clickHouseUri())
                     .header("Content-Type", "text/plain; charset=utf-8")
                     .POST(HttpRequest.BodyPublishers.ofString(query, StandardCharsets.UTF_8))
@@ -236,13 +230,11 @@ public class InventoryService {
             response.body().lines().filter(line -> !line.isBlank()).forEach(line -> {
                 String[] columns = line.split("\\t", 2);
                 if (columns.length < 2) return;
-                LocalDateTime minute = LocalDateTime.parse(columns[0].replace(' ', 'T')).truncatedTo(ChronoUnit.MINUTES);
-                List<String> orderNos = ordersByMinute.get(minute);
-                if (orderNos != null) orderNos.add(columns[1]);
+                ordersByCreatedMinute.computeIfAbsent(formatClickHouseMinute(columns[0]), ignored -> new java.util.ArrayList<>())
+                        .add(columns[1]);
             });
-            DateTimeFormatter minuteFormat = DateTimeFormatter.ofPattern("HH:mm");
-            List<RealtimeQOrderView> minutes = ordersByMinute.entrySet().stream()
-                    .map(entry -> new RealtimeQOrderView(entry.getKey().format(minuteFormat),
+            List<RealtimeQOrderView> minutes = ordersByCreatedMinute.entrySet().stream()
+                    .map(entry -> new RealtimeQOrderView(entry.getKey(),
                             entry.getValue().size(), entry.getValue()))
                     .toList();
             int totalCount = minutes.stream().mapToInt(RealtimeQOrderView::count).sum();
@@ -250,6 +242,14 @@ public class InventoryService {
         } catch (RuntimeException | java.io.IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return null;
+        }
+    }
+
+    private String formatClickHouseMinute(String value) {
+        try {
+            return LocalDateTime.parse(value.replace(' ', 'T')).format(DateTimeFormatter.ofPattern("MM-dd HH:mm"));
+        } catch (RuntimeException ignored) {
+            return value;
         }
     }
 

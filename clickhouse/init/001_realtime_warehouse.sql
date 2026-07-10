@@ -33,10 +33,10 @@ ORDER BY (warehouse_id, status_code, minute);
 
 CREATE TABLE IF NOT EXISTS smart_wms_dw.ads_q_order_10m
 (
-    minute DateTime,
+    created_at DateTime,
     warehouse_id UInt64,
     status_code LowCardinality(String),
     order_no String
 )
 ENGINE = ReplacingMergeTree
-ORDER BY (warehouse_id, status_code, minute, order_no);
+ORDER BY (warehouse_id, status_code, created_at, order_no);

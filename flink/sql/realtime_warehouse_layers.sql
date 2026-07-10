@@ -54,7 +54,7 @@ CREATE TABLE dws_q_order_minute (
 );
 
 CREATE TABLE ads_q_order_10m (
-  minute TIMESTAMP(3),
+  created_at TIMESTAMP(3),
   warehouse_id BIGINT,
   status_code STRING,
   order_no STRING
@@ -80,7 +80,8 @@ WHERE o.status IN ('Q', 'IN_QUEUE', 'CREATED')
 GROUP BY TUMBLE(o.created_at, INTERVAL '1' MINUTE), i.warehouse_id;
 
 INSERT INTO ads_q_order_10m
-SELECT DISTINCT TUMBLE_START(o.created_at, INTERVAL '1' MINUTE), i.warehouse_id, 'Q', o.order_no
+SELECT DISTINCT o.created_at, i.warehouse_id, 'Q', o.order_no
 FROM ods_outbound_orders o
 JOIN ods_outbound_order_items i ON o.id = i.order_id
-WHERE o.status IN ('Q', 'IN_QUEUE', 'CREATED');
+WHERE o.status IN ('Q', 'IN_QUEUE', 'CREATED')
+  AND o.created_at <= CURRENT_TIMESTAMP - INTERVAL '10' MINUTE;
