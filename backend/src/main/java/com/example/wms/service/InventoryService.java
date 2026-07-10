@@ -215,9 +215,12 @@ public class InventoryService {
             String cutoffText = cutoff.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
             String warehouseFilter = warehouseId == null ? "" : " and warehouse_id = " + warehouseId;
             String query = """
-                    select toString(toStartOfMinute(created_at)), order_no
-                    from ads_q_order_10m
-                    where status_code = 'Q' and created_at <= toDateTime('%s')%s
+                    select minute, order_no
+                    from (
+                        select distinct created_at, toString(toStartOfMinute(created_at)) as minute, order_no
+                        from ads_q_order_10m
+                        where status_code = 'Q' and created_at <= toDateTime('%s')%s
+                    )
                     order by created_at, order_no
                     format TabSeparated
                     """.formatted(cutoffText, warehouseFilter);
