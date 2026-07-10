@@ -94,6 +94,28 @@ h1, h2, h3, p { margin: 0; }
 .order-table tbody tr:hover { background: #f8fbfe; }
 .order-table tbody tr.selected { background: #eef6fc; }
 .order-table tbody tr:last-child td { border-bottom: 0; }
+.realtime-panel { max-width: 1120px; margin: 0 auto; }
+.realtime-head { align-items: flex-start; }
+.refresh-time { align-self: center; color: #667085; font-size: 12px; white-space: nowrap; }
+.warehouse-layer-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.warehouse-layer-strip article { min-height: 104px; display: grid; align-content: start; gap: 6px; padding: 12px; border: 1px solid #dbe4ee; border-radius: 8px; background: #f8fafc; }
+.warehouse-layer-strip b { width: 46px; height: 30px; display: grid; place-items: center; border-radius: 6px; color: #fff; background: #1769aa; font-size: 13px; }
+.warehouse-layer-strip span { color: #17202a; font-weight: 800; }
+.warehouse-layer-strip em { color: #667085; font-size: 12px; font-style: normal; line-height: 1.45; }
+.realtime-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+.realtime-summary div { display: grid; gap: 6px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.realtime-summary span { color: #667085; font-size: 12px; }
+.realtime-summary b { font-size: 28px; color: #17202a; }
+.minute-bars { display: grid; grid-template-columns: repeat(10, minmax(54px, 1fr)); gap: 8px; min-height: 180px; align-items: end; padding: 14px; border: 1px solid #dbe4ee; border-radius: 8px; background: #f8fafc; }
+.minute-bars article { display: grid; justify-items: center; gap: 6px; min-width: 0; }
+.minute-bar-track { width: 100%; max-width: 42px; height: 104px; display: flex; align-items: end; border-radius: 6px; background: #e7edf4; overflow: hidden; }
+.minute-bar-track i { width: 100%; min-height: 7px; display: block; border-radius: 6px 6px 0 0; background: #24745a; }
+.minute-bars b { color: #17202a; font-size: 16px; }
+.minute-bars span { color: #667085; font-size: 12px; }
+.realtime-orders { margin-top: 14px; }
+.order-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.order-chip-list span { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 8px; border-radius: 6px; color: #0f4f82; background: #eef6fc; font-size: 12px; font-weight: 700; }
+.muted { color: #98a2b3; }
 .shipping-job-form { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 14px; margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
 .shipping-job-remark { grid-column: span 3; }
 .shipping-order-picker { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border: 1px solid #dbe4ee; border-radius: 8px; background: #fff; }
@@ -310,7 +332,8 @@ label.disabled { opacity: .78; }
   .overview { grid-template-columns: repeat(2, 1fr); }
   .module-grid { grid-template-columns: repeat(2, 1fr); }
   .submodule-panel { grid-template-columns: repeat(2, 1fr); }
-  .form-grid, .filters, .cards, .scan-result, .detail-grid, .outbound-detail-grid, .order-search-form, .shipping-job-form, .shipping-job-layout { grid-template-columns: 1fr; }
+  .form-grid, .filters, .cards, .scan-result, .detail-grid, .outbound-detail-grid, .order-search-form, .shipping-job-form, .shipping-job-layout, .warehouse-layer-strip, .realtime-summary { grid-template-columns: 1fr; }
+  .minute-bars { grid-template-columns: repeat(5, minmax(48px, 1fr)); }
   .shipping-job-remark { grid-column: auto; }
   .shipping-add-orders { grid-template-columns: 1fr; }
   .order-main-fields .remark-field { grid-column: auto; }

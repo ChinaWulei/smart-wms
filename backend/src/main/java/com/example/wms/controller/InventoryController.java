@@ -8,6 +8,7 @@ import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.OutboundOrderDetailView;
+import com.example.wms.dto.WmsDtos.RealtimeWarehousePanelView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
 import com.example.wms.dto.WmsDtos.ScanProductView;
@@ -162,6 +163,12 @@ public class InventoryController {
             @RequestParam(required = false) Long warehouseId) {
         return ApiResponse.ok(inventoryService.searchOrders(
                 orderNo, direction, status, createdFrom, createdTo, operatorName, warehouseId));
+    }
+
+    @GetMapping("/warehouse-data/realtime-q")
+    public ApiResponse<RealtimeWarehousePanelView> realtimeWarehousePanel(
+            @RequestParam(required = false) Long warehouseId) {
+        return ApiResponse.ok(inventoryService.realtimeWarehousePanel(warehouseId));
     }
 
     @PostMapping("/inventory-checks")

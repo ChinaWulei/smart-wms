@@ -33,6 +33,9 @@ public class WmsDtos {
     public record OrderSearchView(Long id, String orderNo, String direction, String type, OrderStatus status,
                                   String operatorName, String remark, Integer itemCount, LocalDateTime createdAt,
                                   LocalDateTime completedAt) {}
+    public record RealtimeQOrderView(String minute, Integer count, List<String> orderNos) {}
+    public record RealtimeWarehousePanelView(String statusCode, Integer windowMinutes, LocalDateTime refreshedAt,
+                                             Integer totalCount, List<RealtimeQOrderView> minutes) {}
     public record OutboundItemView(Long itemId, Long productId, String sku, String barcode, String productName,
                                    String modelSpec, String unitName, Integer quantity, Integer allocatedQuantity,
                                    Integer pickedQuantity, String pickingStatus,

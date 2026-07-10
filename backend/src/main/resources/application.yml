@@ -38,6 +38,13 @@ ai:
   internal-token: ${AI_INTERNAL_TOKEN:change-me}
   pdf-font: ${AI_PDF_FONT:/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc,0}
 
+warehouse:
+  realtime:
+    clickhouse-url: ${WAREHOUSE_REALTIME_CLICKHOUSE_URL:}
+    clickhouse-database: ${WAREHOUSE_REALTIME_CLICKHOUSE_DATABASE:smart_wms_dw}
+    clickhouse-user: ${WAREHOUSE_REALTIME_CLICKHOUSE_USER:default}
+    clickhouse-password: ${WAREHOUSE_REALTIME_CLICKHOUSE_PASSWORD:}
+
 aws:
   s3:
     bucket: ${AWS_S3_BUCKET:}

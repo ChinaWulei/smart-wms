@@ -249,6 +249,78 @@
           </div>
         </section>
 
+        <section v-if="view === 'realtime-warehouse'" class="panel realtime-panel">
+          <div class="panel-head realtime-head">
+            <div>
+              <h2>{{ labels.realtimeWarehouse }}</h2>
+              <p class="panel-description">{{ labels.realtimeWarehouseHint }}</p>
+            </div>
+            <div class="head-actions">
+              <span class="refresh-time">{{ labels.refreshedAt }} {{ formatTime(realtimePanel.refreshedAt) }}</span>
+              <button :disabled="loading.realtimePanel" @click="loadRealtimePanel">
+                {{ loading.realtimePanel ? labels.refreshing : text.refresh }}
+              </button>
+            </div>
+          </div>
+
+          <div class="warehouse-layer-strip">
+            <article v-for="layer in warehouseLayers" :key="layer.key">
+              <b>{{ layer.key }}</b>
+              <span>{{ layer.label }}</span>
+              <em>{{ layer.detail }}</em>
+            </article>
+          </div>
+
+          <div class="realtime-summary">
+            <div>
+              <span>{{ labels.monitorWindow }}</span>
+              <b>{{ realtimePanel.windowMinutes || 10 }} min</b>
+            </div>
+            <div>
+              <span>{{ labels.qStatus }}</span>
+              <b>{{ realtimePanel.statusCode || 'Q' }}</b>
+            </div>
+            <div>
+              <span>{{ labels.qOrderCount }}</span>
+              <b>{{ realtimePanel.totalCount || 0 }}</b>
+            </div>
+          </div>
+
+          <div class="minute-bars">
+            <article v-for="minute in realtimeMinutes" :key="minute.minute">
+              <div class="minute-bar-track">
+                <i :style="{ height: `${minuteBarHeight(minute.count)}%` }"></i>
+              </div>
+              <b>{{ minute.count }}</b>
+              <span>{{ minute.minute }}</span>
+            </article>
+          </div>
+
+          <div class="table-wrap realtime-orders">
+            <table class="order-table">
+              <thead>
+                <tr>
+                  <th>{{ labels.minute }}</th>
+                  <th>{{ labels.qOrderCount }}</th>
+                  <th>{{ labels.orderNo }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="minute in realtimeMinutes" :key="`row-${minute.minute}`">
+                  <td>{{ minute.minute }}</td>
+                  <td><span class="status-tag in_queue">{{ minute.count }}</span></td>
+                  <td>
+                    <div v-if="minute.orderNos?.length" class="order-chip-list">
+                      <span v-for="orderNo in minute.orderNos" :key="orderNo">{{ orderNo }}</span>
+                    </div>
+                    <span v-else class="muted">-</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <section v-if="view === 'inbound-orders'" class="panel">
           <div class="panel-head">
             <h2>{{ labels.inboundOrders }}</h2>
@@ -953,6 +1025,14 @@ const text = {
 const labels = {
   orderSearch: '\u8ba2\u5355\u641c\u7d22',
   orderSearchHint: '\u6309\u8ba2\u5355\u72b6\u6001\u3001\u521b\u5efa\u65e5\u671f\u548c\u521b\u5efa\u4eba\u7b5b\u9009\u5165\u5e93\u53ca\u51fa\u5e93\u8ba2\u5355',
+  realtimeWarehouse: '\u5b9e\u65f6\u6570\u4ed3\u9762\u677f',
+  realtimeWarehouseHint: '\u57fa\u4e8e Flink \u5b9e\u65f6\u6570\u4ed3\u7684 ODS\u3001DWD\u3001DWS\u3001ADS \u5206\u5c42\uff0c\u5c55\u793a\u8fde\u7eed 10 \u5206\u949f Q \u72b6\u6001\u8ba2\u5355',
+  refreshedAt: '\u5237\u65b0\u65f6\u95f4',
+  refreshing: '\u5237\u65b0\u4e2d...',
+  monitorWindow: '\u76d1\u63a7\u7a97\u53e3',
+  qStatus: 'Q \u72b6\u6001',
+  qOrderCount: 'Q \u72b6\u6001\u8ba2\u5355\u6570',
+  minute: '\u5206\u949f',
   orderNo: '\u8ba2\u5355\u53f7',
   orderNoPlaceholder: '\u8f93\u5165\u8ba2\u5355\u53f7',
   direction: '\u8ba2\u5355\u65b9\u5411',
@@ -1108,7 +1188,7 @@ const labels = {
   backToOverview: '\u8fd4\u56de\u4ed3\u5e93\u4fef\u89c6\u56fe'
 }
 const modules = [
-  module('order', '\u8ba2\u5355\u7ba1\u7406', '\u5355', [['order-search', labels.orderSearch]]),
+  module('order', '\u8ba2\u5355\u7ba1\u7406', '\u5355', [['order-search', labels.orderSearch], ['realtime-warehouse', labels.realtimeWarehouse]]),
   module('inbound', '\u5165\u5e93\u6a21\u5757', '\u5165', [['inbound-orders', labels.inboundOrders], ['inbound-create', labels.createInbound], ['receiving', labels.receiving], ['inbound-records', '\u5165\u5e93\u8bb0\u5f55']]),
   module('outbound', '\u51fa\u5e93\u6a21\u5757', '\u51fa', [['outbound-orders', labels.outboundOrders], ['outbound-create', labels.createOutbound], ['picking', labels.pickingManagement], ['shipping-jobs', labels.shippingJobs], ['outbound-records', '\u51fa\u5e93\u8bb0\u5f55']]),
   module('stock', '\u5e93\u5b58\u7ba1\u7406', '\u5b58', [['stock-query', labels.stockQuery], ['stock-flow', labels.stockFlow], ['stock-adjust', '\u5e93\u5b58\u8c03\u6574'], ['stock-distribution', '\u5546\u54c1\u5e93\u5b58\u5206\u5e03']]),
@@ -1133,6 +1213,9 @@ const englishText = {
 }
 const englishLabels = {
   orderSearch: 'Order Search', orderSearchHint: 'Filter inbound and outbound orders by status, creation date, and creator',
+  realtimeWarehouse: 'Realtime Warehouse Data', realtimeWarehouseHint: 'Flink realtime warehouse layers ODS, DWD, DWS, and ADS for Q status orders in the last 10 minutes',
+  refreshedAt: 'Refreshed', refreshing: 'Refreshing...', monitorWindow: 'Window', qStatus: 'Q Status',
+  qOrderCount: 'Q Orders', minute: 'Minute',
   orderNo: 'Order No.', orderNoPlaceholder: 'Enter order number', direction: 'Direction', allDirections: 'All Directions',
   inbound: 'Inbound', outbound: 'Outbound', creator: 'Creator', creatorPlaceholder: 'Enter creator',
   createdFrom: 'Created From', createdTo: 'Created To', createdAt: 'Created At', itemCount: 'SKU Count',
@@ -1190,7 +1273,7 @@ const moduleEnglish = {
   alert: 'Inventory Alerts', ai: 'AI Warehouse Assistant', settings: 'Settings'
 }
 const submoduleEnglish = {
-  'order-search': 'Order Search', 'inbound-orders': 'Inbound Orders', 'inbound-create': 'New Inbound Order',
+  'order-search': 'Order Search', 'realtime-warehouse': 'Realtime Warehouse Data', 'inbound-orders': 'Inbound Orders', 'inbound-create': 'New Inbound Order',
   receiving: 'Receiving', 'inbound-records': 'Inbound Records', 'outbound-orders': 'Outbound Orders',
   'outbound-create': 'New Outbound Order', picking: 'Picking', 'shipping-jobs': 'Shipping Jobs', 'outbound-records': 'Outbound Records',
   'stock-query': 'Stock Query', 'stock-flow': 'Stock Movements', 'stock-adjust': 'Stock Adjustment',
@@ -1237,6 +1320,8 @@ const shippingJobs = ref([])
 const selectedShippingJob = ref(null)
 const shippingOrdersToAdd = ref([])
 const orderSearchResults = ref([])
+const realtimePanel = ref({ statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [] })
+let realtimeTimer = null
 const distributionWarehouseId = ref(null)
 const selectedDistributionLocation = ref(null)
 const selectedDistributionShelfCode = ref('')
@@ -1294,7 +1379,7 @@ const liveTraceLabel = computed(() => {
     : `${traceAgentName(event.agent)}：${event.label}`
 })
 localStorage.setItem('wms-ai-session', aiChat.sessionId)
-const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, inboundAction: false, outboundAction: false, shippingJob: false })
+const loading = reactive({ login: false, shelf: false, receive: false, receiveSubmit: false, order: false, orderSearch: false, realtimePanel: false, inboundAction: false, outboundAction: false, shippingJob: false })
 const shelfForm = reactive({ warehouseId: null, shelfCode: 'A01', shelfName: 'A01\u8d27\u67b6', xCount: 3, yCount: 4, zCount: 2, capacity: 100, remark: '' })
 const locationFilters = reactive({ warehouseId: null, code: '', status: '' })
 const orderSearchFilters = reactive({ orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
@@ -1318,6 +1403,21 @@ const productCodeRef = refs.productCode
 const quantityRef = refs.quantity
 
 const currentSubmodules = computed(() => modules.find(m => m.key === activeModule.value)?.subs || [])
+const warehouseLayers = computed(() => locale.value === 'en'
+  ? [
+      { key: 'ODS', label: 'Source Capture', detail: 'Raw order events' },
+      { key: 'DWD', label: 'Clean Detail', detail: 'Status Q normalized' },
+      { key: 'DWS', label: 'Minute Aggregate', detail: '10 minute window' },
+      { key: 'ADS', label: 'Panel Serving', detail: 'Dashboard query' }
+    ]
+  : [
+      { key: 'ODS', label: '\u539f\u59cb\u6570\u636e\u5c42', detail: '\u8ba2\u5355\u539f\u59cb\u4e8b\u4ef6' },
+      { key: 'DWD', label: '\u660e\u7ec6\u6570\u636e\u5c42', detail: 'Q \u72b6\u6001\u6e05\u6d17' },
+      { key: 'DWS', label: '\u6c47\u603b\u6570\u636e\u5c42', detail: '10 \u5206\u949f\u7a97\u53e3' },
+      { key: 'ADS', label: '\u5e94\u7528\u6570\u636e\u5c42', detail: '\u9762\u677f\u67e5\u8be2' }
+    ])
+const realtimeMinutes = computed(() => realtimePanel.value.minutes?.length ? realtimePanel.value.minutes : emptyRealtimeMinutes())
+const maxRealtimeCount = computed(() => Math.max(1, ...realtimeMinutes.value.map(item => item.count || 0)))
 const pickingOrders = computed(() => outboundOrders.value.filter(order => ['READY_TO_PICK', 'PICKING', 'PICKED'].includes(order.status)))
 const filteredPickingOrders = computed(() => {
   const keyword = pickingOrderNo.value.trim().toLowerCase()
@@ -1401,7 +1501,7 @@ const currentOrderTypes = computed(() => isInboundCreate.value
       { value: 'INVENTORY_LOSS', label: typeName('INVENTORY_LOSS') }
     ])
 const placeholderView = computed(() => {
-  if (['home', 'order-search', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'outbound-detail', 'inbound-create', 'outbound-create', 'picking', 'shipping-jobs', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
+  if (['home', 'order-search', 'realtime-warehouse', 'inbound-orders', 'inbound-detail', 'outbound-orders', 'outbound-detail', 'inbound-create', 'outbound-create', 'picking', 'shipping-jobs', 'shelf-create', 'location-query', 'receiving', 'stock-query', 'stock-flow', 'stock-distribution'].includes(view.value)) return ''
   return currentSubmodules.value.find(s => s.key === view.value)?.label || ''
 })
 const overviewCards = computed(() => [
@@ -1477,6 +1577,7 @@ function clearWarehouseData() {
   selectedShippingJob.value = null
   shippingOrdersToAdd.value = []
   orderSearchResults.value = []
+  realtimePanel.value = { statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [] }
   dashboard.value = {}
   inboundOrder.value = null
   inboundOrderDetail.value = null
@@ -1508,6 +1609,7 @@ function viewFromRoute() {
 async function loadView(key) {
   if (!user.value || !selectedWarehouseId.value) return
   if (key === 'order-search') await searchOrders()
+  if (key === 'realtime-warehouse') await startRealtimePanel()
   if (key === 'inbound-orders') await loadInboundOrders()
   if (key === 'outbound-orders') await loadOutboundOrders()
   if (key === 'picking') await loadOutboundOrders()
@@ -1524,6 +1626,7 @@ async function loadView(key) {
   }
 }
 async function activateView(key, updateHistory = true, entityKey = '') {
+  if (key !== 'realtime-warehouse') stopRealtimePanel()
   view.value = key
   activeModule.value = moduleForView(key)?.key || ''
   if (key === 'inbound-create' || key === 'outbound-create') resetOrderForm(key)
@@ -1918,6 +2021,38 @@ async function searchOrders() {
 async function resetOrderSearch() {
   Object.assign(orderSearchFilters, { orderNo: '', direction: '', status: '', operatorName: '', createdFrom: '', createdTo: '' })
   await searchOrders()
+}
+async function startRealtimePanel() {
+  await loadRealtimePanel()
+  stopRealtimePanel()
+  realtimeTimer = window.setInterval(loadRealtimePanel, 30000)
+}
+function stopRealtimePanel() {
+  if (!realtimeTimer) return
+  window.clearInterval(realtimeTimer)
+  realtimeTimer = null
+}
+async function loadRealtimePanel() {
+  if (!selectedWarehouseId.value || loading.realtimePanel) return
+  loading.realtimePanel = true
+  try {
+    realtimePanel.value = await api.get(`/warehouse-data/realtime-q?warehouseId=${selectedWarehouseId.value}`)
+  } catch (e) {
+    showToast(e.message, 'error')
+  } finally {
+    loading.realtimePanel = false
+  }
+}
+function emptyRealtimeMinutes() {
+  const now = new Date()
+  now.setSeconds(0, 0)
+  return Array.from({ length: 10 }, (_, index) => {
+    const minute = new Date(now.getTime() - (9 - index) * 60000)
+    return { minute: minute.toTimeString().slice(0, 5), count: 0, orderNos: [] }
+  })
+}
+function minuteBarHeight(count) {
+  return Math.max(8, Math.round((count || 0) * 100 / maxRealtimeCount.value))
 }
 async function loadWarehouses() {
   warehouses.value = (await api.get('/warehouses')).filter(warehouse => /^[A-Z]{5}$/.test(warehouse.code || ''))
@@ -2478,6 +2613,7 @@ onMounted(async () => {
   } else nextTick(() => loginUserRef.value?.focus())
 })
 onUnmounted(() => {
+  stopRealtimePanel()
   window.removeEventListener('pointermove', moveAiDrag)
   window.removeEventListener('pointerup', stopAiDrag)
   window.removeEventListener('pointercancel', stopAiDrag)
