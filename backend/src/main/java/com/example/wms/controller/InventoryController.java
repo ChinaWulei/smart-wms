@@ -7,8 +7,8 @@ import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
+import com.example.wms.dto.WmsDtos.OrderQ10mMetricView;
 import com.example.wms.dto.WmsDtos.OutboundOrderDetailView;
-import com.example.wms.dto.WmsDtos.RealtimeWarehousePanelView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
 import com.example.wms.dto.WmsDtos.ScanProductView;
@@ -165,10 +165,9 @@ public class InventoryController {
                 orderNo, direction, status, createdFrom, createdTo, operatorName, warehouseId));
     }
 
-    @GetMapping("/warehouse-data/realtime-q")
-    public ApiResponse<RealtimeWarehousePanelView> realtimeWarehousePanel(
-            @RequestParam(required = false) Long warehouseId) {
-        return ApiResponse.ok(inventoryService.realtimeWarehousePanel(warehouseId));
+    @GetMapping("/dashboard/order/q-10m-count")
+    public ApiResponse<OrderQ10mMetricView> orderQ10mCount() {
+        return ApiResponse.ok(inventoryService.orderQ10mCount());
     }
 
     @PostMapping("/inventory-checks")

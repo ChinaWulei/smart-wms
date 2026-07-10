@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-smart_wms}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -34,6 +35,32 @@ services:
       timeout: 5s
       retries: 10
 
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      KAFKA_ENABLE_KRAFT: "yes"
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - kafka-data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     environment:
@@ -53,8 +80,11 @@ services:
       retries: 10
 
   flink-jobmanager:
-    image: apache/flink:1.19.1-scala_2.12-java17
+    build: ./flink
     command: jobmanager
+    depends_on:
+      kafka:
+        condition: service_healthy
     ports:
       - "${FLINK_WEB_PORT:-8082}:8081"
     environment:
@@ -65,10 +95,13 @@ services:
       - ./flink/sql:/opt/flink/usrlib/sql:ro
 
   flink-taskmanager:
-    image: apache/flink:1.19.1-scala_2.12-java17
+    build: ./flink
     command: taskmanager
     depends_on:
-      - flink-jobmanager
+      kafka:
+        condition: service_healthy
+      flink-jobmanager:
+        condition: service_started
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
@@ -144,4 +177,5 @@ services:
 volumes:
   postgres-data:
   mongodb-data:
+  kafka-data:
   clickhouse-data:

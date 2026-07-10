@@ -30,12 +30,11 @@ import com.example.wms.dto.WmsDtos.InboundItemView;
 import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderHistoryView;
+import com.example.wms.dto.WmsDtos.OrderQ10mMetricView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.OutboundItemView;
 import com.example.wms.dto.WmsDtos.OutboundOrderDetailView;
-import com.example.wms.dto.WmsDtos.RealtimeQOrderView;
-import com.example.wms.dto.WmsDtos.RealtimeWarehousePanelView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
 import com.example.wms.dto.WmsDtos.ScanProductView;
@@ -50,7 +49,6 @@ import com.example.wms.repository.StorageLocationRepository;
 import com.example.wms.repository.WarehouseRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -181,75 +179,48 @@ public class InventoryService {
     }
 
     @Transactional(readOnly = true)
-    public RealtimeWarehousePanelView realtimeWarehousePanel(Long warehouseId) {
-        LocalDateTime refreshedAt = LocalDateTime.now();
-        LocalDateTime cutoff = refreshedAt.minusMinutes(10);
-        RealtimeWarehousePanelView clickHouseView = realtimeWarehousePanelFromClickHouse(warehouseId, refreshedAt, cutoff);
-        if (clickHouseView != null) return clickHouseView;
-        Map<String, List<String>> ordersByCreatedMinute = new LinkedHashMap<>();
-        DateTimeFormatter minuteFormat = DateTimeFormatter.ofPattern("MM-dd HH:mm");
-        outboundOrderRepository.findAll().stream()
-                .filter(order -> warehouseId == null || order.getItems().stream()
-                        .anyMatch(item -> item.getWarehouse().getId().equals(warehouseId)))
-                .filter(order -> isQStatus(order.getStatus()))
-                .filter(order -> order.getCreatedAt() != null)
-                .filter(order -> !order.getCreatedAt().isAfter(cutoff))
-                .forEach(order -> {
-                    String createdMinute = order.getCreatedAt().truncatedTo(ChronoUnit.MINUTES).format(minuteFormat);
-                    ordersByCreatedMinute.computeIfAbsent(createdMinute, ignored -> new java.util.ArrayList<>())
-                            .add(order.getOrderNo());
-                });
-        List<RealtimeQOrderView> minutes = ordersByCreatedMinute.entrySet().stream()
-                .map(entry -> new RealtimeQOrderView(entry.getKey(),
-                        entry.getValue().size(), entry.getValue()))
-                .toList();
-        int totalCount = minutes.stream().mapToInt(RealtimeQOrderView::count).sum();
-        return new RealtimeWarehousePanelView("Q", 10, refreshedAt, totalCount, minutes);
-    }
-
-    private RealtimeWarehousePanelView realtimeWarehousePanelFromClickHouse(Long warehouseId, LocalDateTime refreshedAt,
-                                                                            LocalDateTime cutoff) {
-        if (blank(clickHouseUrl)) return null;
+    public OrderQ10mMetricView orderQ10mCount() {
+        if (blank(clickHouseUrl)) {
+            throw new BizException("ClickHouse data warehouse is not configured");
+        }
         try {
-            Map<String, List<String>> ordersByCreatedMinute = new LinkedHashMap<>();
-            String cutoffText = cutoff.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            String warehouseFilter = warehouseId == null ? "" : " and warehouse_id = " + warehouseId;
             String query = """
-                    select toString(toStartOfMinute(created_at)), order_no
-                    from ads_q_order_10m
-                    where status_code = 'Q' and created_at <= toDateTime('%s')%s
-                    order by created_at, order_no
+                    select metric_code, metric_name, toString(metric_value), toString(update_time)
+                    from ads_order_q_10m_timeout_summary
+                    where metric_code = 'CONTINUOUS_Q_ORDER_10M'
+                    order by update_time desc
+                    limit 1
                     format TabSeparated
-                    """.formatted(cutoffText, warehouseFilter);
+                    """;
             HttpRequest request = HttpRequest.newBuilder(clickHouseUri())
                     .header("Content-Type", "text/plain; charset=utf-8")
                     .POST(HttpRequest.BodyPublishers.ofString(query, StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() >= 300) return null;
-            response.body().lines().filter(line -> !line.isBlank()).forEach(line -> {
-                String[] columns = line.split("\\t", 2);
-                if (columns.length < 2) return;
-                ordersByCreatedMinute.computeIfAbsent(formatClickHouseMinute(columns[0]), ignored -> new java.util.ArrayList<>())
-                        .add(columns[1]);
-            });
-            List<RealtimeQOrderView> minutes = ordersByCreatedMinute.entrySet().stream()
-                    .map(entry -> new RealtimeQOrderView(entry.getKey(),
-                            entry.getValue().size(), entry.getValue()))
-                    .toList();
-            int totalCount = minutes.stream().mapToInt(RealtimeQOrderView::count).sum();
-            return new RealtimeWarehousePanelView("Q", 10, refreshedAt, totalCount, minutes);
+            if (response.statusCode() >= 300) {
+                throw new BizException("Failed to query ClickHouse ADS metric");
+            }
+            String line = response.body().lines().filter(item -> !item.isBlank()).findFirst().orElse("");
+            if (line.isBlank()) {
+                return new OrderQ10mMetricView("CONTINUOUS_Q_ORDER_10M",
+                        "连续10分钟状态为Q的订单数量", 0, LocalDateTime.now());
+            }
+            String[] columns = line.split("\\t", -1);
+            if (columns.length < 4) throw new BizException("Invalid ClickHouse ADS metric result");
+            return new OrderQ10mMetricView(columns[0], columns[1], Integer.parseInt(columns[2]),
+                    parseClickHouseTime(columns[3]));
         } catch (RuntimeException | java.io.IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return null;
+            if (e instanceof BizException) throw (BizException) e;
+            throw new BizException("Failed to query ClickHouse ADS metric");
         }
     }
 
-    private String formatClickHouseMinute(String value) {
+    private LocalDateTime parseClickHouseTime(String value) {
         try {
-            return LocalDateTime.parse(value.replace(' ', 'T')).format(DateTimeFormatter.ofPattern("MM-dd HH:mm"));
+            return LocalDateTime.parse(value.replace(' ', 'T'));
         } catch (RuntimeException ignored) {
-            return value;
+            return LocalDateTime.now();
         }
     }
 

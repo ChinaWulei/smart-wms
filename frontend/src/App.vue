@@ -2040,7 +2040,14 @@ async function loadRealtimePanel() {
   if (!selectedWarehouseId.value || loading.realtimePanel) return
   loading.realtimePanel = true
   try {
-    realtimePanel.value = await api.get(`/warehouse-data/realtime-q?warehouseId=${selectedWarehouseId.value}`)
+    const metric = await api.get('/dashboard/order/q-10m-count')
+    realtimePanel.value = {
+      statusCode: 'Q',
+      windowMinutes: 10,
+      refreshedAt: metric.updateTime,
+      totalCount: metric.metricValue || 0,
+      minutes: []
+    }
   } catch (e) {
     showToast(e.message, 'error')
   } finally {

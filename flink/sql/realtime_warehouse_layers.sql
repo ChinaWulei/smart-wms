@@ -1,87 +1,165 @@
--- Realtime warehouse data layers for the Q-status order panel.
--- The Flink cluster is provided by docker-compose.yml. Add the required JDBC/CDC
--- connector jars to the Flink image or /opt/flink/lib before submitting this job.
+-- Realtime order status data warehouse layers.
+--
+-- PostgreSQL is only the OLTP source. Do not create DWD/DWS/ADS tables there.
+-- Kafka is the realtime ODS layer.
+-- ClickHouse is the warehouse query layer for DWD/DWS/ADS.
+--
+-- ClickHouse init SQL creates real physical warehouse tables.
+-- Flink CREATE TABLE creates connector mappings used by Flink at runtime.
 
-CREATE TABLE ods_outbound_orders (
+CREATE TABLE cdc_outbound_orders (
   id BIGINT,
   created_at TIMESTAMP(3),
+  updated_at TIMESTAMP(3),
   order_no STRING,
+  type STRING,
   status STRING,
-  WATERMARK FOR created_at AS created_at - INTERVAL '5' SECOND
+  PRIMARY KEY (id) NOT ENFORCED
 ) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:postgresql://postgres:5432/smart_wms',
+  'connector' = 'postgres-cdc',
+  'hostname' = 'postgres',
+  'port' = '5432',
+  'username' = 'postgres',
+  'password' = 'postgres',
+  'database-name' = 'smart_wms',
+  'schema-name' = 'public',
   'table-name' = 'outbound_orders',
-  'username' = 'postgres',
-  'password' = 'postgres'
+  'slot.name' = 'flink_outbound_orders_slot',
+  'decoding.plugin.name' = 'pgoutput'
 );
 
-CREATE TABLE ods_outbound_order_items (
+CREATE TABLE ods_order_status_change_raw_sink (
+  orderId BIGINT,
+  orderNo STRING,
+  orderType STRING,
+  beforeStatus STRING,
+  afterStatus STRING,
+  changeTime TIMESTAMP(3),
+  eventTime TIMESTAMP(3),
+  op STRING
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'ods_order_status_change_raw',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json',
+  'json.timestamp-format.standard' = 'ISO-8601'
+);
+
+CREATE TABLE ods_order_status_change_raw (
+  orderId BIGINT,
+  orderNo STRING,
+  orderType STRING,
+  beforeStatus STRING,
+  afterStatus STRING,
+  changeTime TIMESTAMP(3),
+  eventTime TIMESTAMP(3),
+  op STRING,
+  WATERMARK FOR eventTime AS eventTime - INTERVAL '5' SECOND
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'ods_order_status_change_raw',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'properties.group.id' = 'wms-dwd-order-status-change',
+  'scan.startup.mode' = 'earliest-offset',
+  'format' = 'json',
+  'json.timestamp-format.standard' = 'ISO-8601'
+);
+
+CREATE TABLE dwd_order_status_change (
   order_id BIGINT,
-  warehouse_id BIGINT
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:postgresql://postgres:5432/smart_wms',
-  'table-name' = 'outbound_order_items',
-  'username' = 'postgres',
-  'password' = 'postgres'
-);
-
-CREATE TABLE dwd_order_status_detail (
-  event_time TIMESTAMP(3),
-  warehouse_id BIGINT,
   order_no STRING,
-  status_code STRING
+  order_type STRING,
+  before_status STRING,
+  after_status STRING,
+  is_q_status INT,
+  change_time TIMESTAMP(3),
+  event_time TIMESTAMP(3),
+  op STRING,
+  update_time TIMESTAMP(3)
 ) WITH (
   'connector' = 'jdbc',
   'url' = 'jdbc:clickhouse://clickhouse:8123/smart_wms_dw',
-  'table-name' = 'dwd_order_status_detail',
+  'table-name' = 'dwd_order_status_change',
   'username' = 'default',
   'password' = ''
 );
 
-CREATE TABLE dws_q_order_minute (
-  minute TIMESTAMP(3),
-  warehouse_id BIGINT,
-  status_code STRING,
-  order_count BIGINT
+CREATE TABLE dwd_order_status_change_kafka_sink (
+  order_id BIGINT,
+  order_no STRING,
+  order_type STRING,
+  before_status STRING,
+  after_status STRING,
+  is_q_status INT,
+  change_time TIMESTAMP(3),
+  event_time TIMESTAMP(3),
+  op STRING,
+  update_time TIMESTAMP(3)
 ) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:clickhouse://clickhouse:8123/smart_wms_dw',
-  'table-name' = 'dws_q_order_minute',
-  'username' = 'default',
-  'password' = ''
+  'connector' = 'kafka',
+  'topic' = 'dwd_order_status_change',
+  'properties.bootstrap.servers' = 'kafka:9092',
+  'format' = 'json',
+  'json.timestamp-format.standard' = 'ISO-8601'
 );
 
-CREATE TABLE ads_q_order_10m (
-  created_at TIMESTAMP(3),
-  warehouse_id BIGINT,
-  status_code STRING,
-  order_no STRING
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:clickhouse://clickhouse:8123/smart_wms_dw',
-  'table-name' = 'ads_q_order_10m',
-  'username' = 'default',
-  'password' = ''
-);
+-- CDC to Kafka ODS. For a full beforeStatus value, production Debezium should
+-- emit both before/after payloads. This mapping keeps the raw event contract and
+-- leaves beforeStatus null when Flink CDC SQL cannot expose it directly.
+INSERT INTO ods_order_status_change_raw_sink
+SELECT
+  id,
+  order_no,
+  type,
+  CAST(NULL AS STRING),
+  status,
+  COALESCE(updated_at, created_at),
+  CURRENT_TIMESTAMP,
+  'u'
+FROM cdc_outbound_orders
+WHERE id IS NOT NULL
+  AND order_no IS NOT NULL
+  AND status IS NOT NULL;
 
-INSERT INTO dwd_order_status_detail
-SELECT DISTINCT o.created_at, i.warehouse_id, o.order_no, 'Q'
-FROM ods_outbound_orders o
-JOIN ods_outbound_order_items i ON o.id = i.order_id
-WHERE o.status IN ('Q', 'IN_QUEUE', 'CREATED');
+-- Kafka ODS to ClickHouse DWD.
+INSERT INTO dwd_order_status_change
+SELECT
+  orderId,
+  TRIM(orderNo),
+  TRIM(orderType),
+  UPPER(TRIM(beforeStatus)),
+  UPPER(TRIM(afterStatus)),
+  CASE WHEN UPPER(TRIM(afterStatus)) = 'Q'
+         OR UPPER(TRIM(afterStatus)) IN ('IN_QUEUE', 'CREATED')
+       THEN 1 ELSE 0 END,
+  changeTime,
+  eventTime,
+  op,
+  CURRENT_TIMESTAMP
+FROM ods_order_status_change_raw
+WHERE orderId IS NOT NULL
+  AND orderNo IS NOT NULL
+  AND afterStatus IS NOT NULL
+  AND TRIM(orderNo) <> ''
+  AND TRIM(afterStatus) <> '';
 
-INSERT INTO dws_q_order_minute
-SELECT TUMBLE_START(o.created_at, INTERVAL '1' MINUTE), i.warehouse_id, 'Q', COUNT(DISTINCT o.order_no)
-FROM ods_outbound_orders o
-JOIN ods_outbound_order_items i ON o.id = i.order_id
-WHERE o.status IN ('Q', 'IN_QUEUE', 'CREATED')
-GROUP BY TUMBLE(o.created_at, INTERVAL '1' MINUTE), i.warehouse_id;
-
-INSERT INTO ads_q_order_10m
-SELECT DISTINCT o.created_at, i.warehouse_id, 'Q', o.order_no
-FROM ods_outbound_orders o
-JOIN ods_outbound_order_items i ON o.id = i.order_id
-WHERE o.status IN ('Q', 'IN_QUEUE', 'CREATED')
-  AND o.created_at <= CURRENT_TIMESTAMP - INTERVAL '10' MINUTE;
+INSERT INTO dwd_order_status_change_kafka_sink
+SELECT
+  orderId,
+  TRIM(orderNo),
+  TRIM(orderType),
+  UPPER(TRIM(beforeStatus)),
+  UPPER(TRIM(afterStatus)),
+  CASE WHEN UPPER(TRIM(afterStatus)) = 'Q'
+         OR UPPER(TRIM(afterStatus)) IN ('IN_QUEUE', 'CREATED')
+       THEN 1 ELSE 0 END,
+  changeTime,
+  eventTime,
+  op,
+  CURRENT_TIMESTAMP
+FROM ods_order_status_change_raw
+WHERE orderId IS NOT NULL
+  AND orderNo IS NOT NULL
+  AND afterStatus IS NOT NULL
+  AND TRIM(orderNo) <> ''
+  AND TRIM(afterStatus) <> '';
