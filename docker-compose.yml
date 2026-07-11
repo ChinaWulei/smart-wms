@@ -60,6 +60,17 @@ services:
       timeout: 5s
       retries: 10
 
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      kafka:
+        condition: service_started
+    environment:
+      KAFKA_CLUSTERS_0_NAME: smart-wms
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "${KAFKA_UI_PORT:-8083}:8080"
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     environment:
