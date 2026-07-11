@@ -61,6 +61,22 @@ services:
       timeout: 5s
       retries: 10
 
+  kafka-init:
+    image: apache/kafka:3.7.0
+    depends_on:
+      kafka:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -c
+      - |
+        until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1; do
+          echo "waiting for kafka"
+          sleep 3
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic ods_order_status_change_raw --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic dwd_order_status_change --partitions 1 --replication-factor 1
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     depends_on:
@@ -94,8 +110,8 @@ services:
     build: ./flink
     command: jobmanager
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "${FLINK_WEB_PORT:-8082}:8081"
     environment:
@@ -109,14 +125,14 @@ services:
     build: ./flink
     command: taskmanager
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       flink-jobmanager:
         condition: service_started
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 2
+        taskmanager.numberOfTaskSlots: 4
         parallelism.default: 1
 
   backend:

@@ -19,7 +19,7 @@
    - Kafka ODS topic to ClickHouse DWD table `dwd_order_status_change`
    - Kafka ODS topic to Kafka DWD topic `dwd_order_status_change`
 
-2. `datastream/OrderQ10mTimeoutJob.java`
+2. `../flink-job/src/main/java/com/example/wms/realtime/OrderQ10mTimeoutJob.java`
    - Consumes Kafka DWD topic `dwd_order_status_change`
    - Uses keyed state per order
    - Registers a 10 minute timer when an order enters Q
@@ -37,3 +37,26 @@ sudo docker compose up -d --force-recreate flink-jobmanager flink-taskmanager
 ```
 
 The Dockerfile copies local `flink/lib/*.jar` files into `/opt/flink/lib`.
+
+The compose file gives the Flink TaskManager 4 task slots. The realtime flow normally runs at least three jobs at the same time: CDC to ODS, ODS to DWD, and the DWS/ADS timer job.
+
+## Package and Submit DataStream Job
+
+Build the job jar:
+
+```bash
+cd flink-job
+mvn clean package -DskipTests
+```
+
+Copy the jar into the Flink JobManager container and submit it:
+
+```bash
+sudo docker cp target/wms-flink-job.jar smart-wms-flink-jobmanager-1:/opt/flink/usrlib/wms-flink-job.jar
+sudo docker exec -it smart-wms-flink-jobmanager-1 \
+  /opt/flink/bin/flink run \
+  -c com.example.wms.realtime.OrderQ10mTimeoutJob \
+  /opt/flink/usrlib/wms-flink-job.jar
+```
+
+This starts the DWS/ADS timer job. Keep the SQL jobs running too, because they move PostgreSQL CDC events into Kafka ODS and then Kafka DWD.
