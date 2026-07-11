@@ -16,6 +16,43 @@ CREATE TABLE IF NOT EXISTS smart_wms_dw.dwd_order_status_change
 ENGINE = ReplacingMergeTree(update_time)
 ORDER BY (order_id, event_time, after_status);
 
+CREATE TABLE IF NOT EXISTS smart_wms_dw.dwd_order_status_change_kafka
+(
+    order_id UInt64,
+    order_no String,
+    order_type String,
+    before_status Nullable(String),
+    after_status String,
+    is_q_status UInt8,
+    change_time String,
+    event_time String,
+    op String,
+    update_time String
+)
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = 'kafka:9092',
+    kafka_topic_list = 'dwd_order_status_change',
+    kafka_group_name = 'clickhouse_dwd_order_status_change',
+    kafka_format = 'JSONEachRow',
+    kafka_num_consumers = 1;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS smart_wms_dw.mv_dwd_order_status_change
+TO smart_wms_dw.dwd_order_status_change
+AS
+SELECT
+    order_id,
+    order_no,
+    order_type,
+    before_status,
+    after_status,
+    is_q_status,
+    parseDateTimeBestEffortOrZero(change_time),
+    parseDateTimeBestEffortOrZero(event_time),
+    op,
+    parseDateTimeBestEffortOrZero(update_time)
+FROM smart_wms_dw.dwd_order_status_change_kafka;
+
 CREATE TABLE IF NOT EXISTS smart_wms_dw.dws_order_q_10m_timeout_detail
 (
     order_id UInt64,

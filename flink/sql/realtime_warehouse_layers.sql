@@ -68,25 +68,6 @@ CREATE TABLE ods_order_status_change_raw (
   'json.ignore-parse-errors' = 'true'
 );
 
-CREATE TABLE dwd_order_status_change (
-  order_id BIGINT,
-  order_no STRING,
-  order_type STRING,
-  before_status STRING,
-  after_status STRING,
-  is_q_status INT,
-  change_time TIMESTAMP(3),
-  event_time TIMESTAMP(3),
-  op STRING,
-  update_time TIMESTAMP(3)
-) WITH (
-  'connector' = 'jdbc',
-  'url' = 'jdbc:clickhouse://clickhouse:8123/smart_wms_dw',
-  'table-name' = 'dwd_order_status_change',
-  'username' = 'default',
-  'password' = ''
-);
-
 CREATE TABLE dwd_order_status_change_kafka_sink (
   order_id BIGINT,
   order_no STRING,
@@ -124,28 +105,8 @@ WHERE id IS NOT NULL
   AND order_no IS NOT NULL
   AND status IS NOT NULL;
 
--- Kafka ODS to ClickHouse DWD.
-INSERT INTO dwd_order_status_change
-SELECT
-  orderId,
-  TRIM(orderNo),
-  TRIM(orderType),
-  UPPER(TRIM(beforeStatus)),
-  UPPER(TRIM(afterStatus)),
-  CASE WHEN UPPER(TRIM(afterStatus)) = 'Q'
-         OR UPPER(TRIM(afterStatus)) IN ('IN_QUEUE', 'CREATED')
-       THEN 1 ELSE 0 END,
-  changeTime,
-  eventTime,
-  op,
-  CURRENT_TIMESTAMP
-FROM ods_order_status_change_raw
-WHERE orderId IS NOT NULL
-  AND orderNo IS NOT NULL
-  AND afterStatus IS NOT NULL
-  AND TRIM(orderNo) <> ''
-  AND TRIM(afterStatus) <> '';
-
+-- Kafka ODS to Kafka DWD. ClickHouse consumes this topic through
+-- a Kafka Engine table and a materialized view.
 INSERT INTO dwd_order_status_change_kafka_sink
 SELECT
   orderId,
