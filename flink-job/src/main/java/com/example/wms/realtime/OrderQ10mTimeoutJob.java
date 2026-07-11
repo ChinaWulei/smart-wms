@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Properties;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.common.state.ValueState;
@@ -197,10 +198,16 @@ public class OrderQ10mTimeoutJob {
 
         ClickHouseWriter() throws Exception {
             Class.forName("com.clickhouse.jdbc.ClickHouseDriver");
-            connection = DriverManager.getConnection(
-                    env("CLICKHOUSE_JDBC_URL", "jdbc:clickhouse://clickhouse:8123/smart_wms_dw"),
-                    env("CLICKHOUSE_USER", "default"),
-                    env("CLICKHOUSE_PASSWORD", ""));
+            String jdbcUrl = env("CLICKHOUSE_JDBC_URL", "jdbc:clickhouse://clickhouse:8123/smart_wms_dw");
+            String user = env("CLICKHOUSE_USER", "default");
+            String password = env("CLICKHOUSE_PASSWORD", "");
+            Properties properties = new Properties();
+            properties.setProperty("user", user);
+            if (!password.isBlank()) {
+                properties.setProperty("password", password);
+            }
+            System.out.printf("Connecting ClickHouse url=%s user=%s passwordSet=%s%n", jdbcUrl, user, !password.isBlank());
+            connection = DriverManager.getConnection(jdbcUrl, properties);
             dws = connection.prepareStatement("""
                     insert into dws_order_q_10m_timeout_detail
                     (order_id, order_no, order_type, q_start_time, timeout_time, current_status, is_timeout, update_time)
