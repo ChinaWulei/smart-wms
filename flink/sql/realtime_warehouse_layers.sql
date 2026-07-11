@@ -36,13 +36,15 @@ CREATE TABLE ods_order_status_change_raw_sink (
   afterStatus STRING,
   changeTime TIMESTAMP(3),
   eventTime TIMESTAMP(3),
-  op STRING
+  op STRING,
+  PRIMARY KEY (orderId) NOT ENFORCED
 ) WITH (
-  'connector' = 'kafka',
+  'connector' = 'upsert-kafka',
   'topic' = 'ods_order_status_change_raw',
   'properties.bootstrap.servers' = 'kafka:9092',
-  'format' = 'json',
-  'json.timestamp-format.standard' = 'ISO-8601'
+  'key.format' = 'json',
+  'value.format' = 'json',
+  'value.json.timestamp-format.standard' = 'ISO-8601'
 );
 
 CREATE TABLE ods_order_status_change_raw (
@@ -62,7 +64,8 @@ CREATE TABLE ods_order_status_change_raw (
   'properties.group.id' = 'wms-dwd-order-status-change',
   'scan.startup.mode' = 'earliest-offset',
   'format' = 'json',
-  'json.timestamp-format.standard' = 'ISO-8601'
+  'json.timestamp-format.standard' = 'ISO-8601',
+  'json.ignore-parse-errors' = 'true'
 );
 
 CREATE TABLE dwd_order_status_change (
