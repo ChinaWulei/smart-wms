@@ -25,3 +25,15 @@
    - Registers a 10 minute timer when an order enters Q
    - Writes ClickHouse DWS table `dws_order_q_10m_timeout_detail`
    - Updates ClickHouse ADS table `ads_order_q_10m_timeout_summary`
+
+## Build Flink Image
+
+Download connector jars before building the Flink image:
+
+```bash
+sh flink/download-connectors.sh
+sudo docker compose build --no-cache flink-jobmanager flink-taskmanager
+sudo docker compose up -d --force-recreate flink-jobmanager flink-taskmanager
+```
+
+The Dockerfile copies local `flink/lib/*.jar` files into `/opt/flink/lib`.
