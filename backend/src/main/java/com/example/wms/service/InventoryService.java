@@ -227,8 +227,10 @@ public class InventoryService {
     private URI clickHouseUri() {
         String separator = clickHouseUrl.contains("?") ? "&" : "?";
         String credentials = "database=" + encode(clickHouseDatabase)
-                + "&user=" + encode(clickHouseUser)
-                + "&password=" + encode(clickHousePassword);
+                + "&user=" + encode(clickHouseUser);
+        if (!blank(clickHousePassword)) {
+            credentials += "&password=" + encode(clickHousePassword);
+        }
         return URI.create(clickHouseUrl + separator + credentials);
     }
 
