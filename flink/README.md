@@ -40,6 +40,13 @@ The Dockerfile copies local `flink/lib/*.jar` files into `/opt/flink/lib`.
 
 The compose file gives the Flink TaskManager 4 task slots. The realtime flow normally runs at least three jobs at the same time: CDC to ODS, ODS to DWD, and the DWS/ADS timer job.
 
+The DataStream timer job connects to ClickHouse as `wms_dw` with no password by default. Existing ClickHouse volumes do not rerun init scripts, so create this user manually once on already-deployed servers:
+
+```bash
+sudo docker exec -it smart-wms-clickhouse-1 clickhouse-client --query "CREATE USER IF NOT EXISTS wms_dw IDENTIFIED WITH no_password"
+sudo docker exec -it smart-wms-clickhouse-1 clickhouse-client --query "GRANT SELECT, INSERT ON smart_wms_dw.* TO wms_dw"
+```
+
 ## Package and Submit DataStream Job
 
 Build the job jar:

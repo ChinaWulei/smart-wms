@@ -116,8 +116,8 @@ services:
       - "${FLINK_WEB_PORT:-8082}:8081"
     environment:
       CLICKHOUSE_JDBC_URL: jdbc:clickhouse://clickhouse:8123/${CLICKHOUSE_DB:-smart_wms_dw}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_USER: ${FLINK_CLICKHOUSE_USER:-wms_dw}
+      CLICKHOUSE_PASSWORD: ${FLINK_CLICKHOUSE_PASSWORD:-}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         parallelism.default: 1
@@ -134,8 +134,8 @@ services:
         condition: service_started
     environment:
       CLICKHOUSE_JDBC_URL: jdbc:clickhouse://clickhouse:8123/${CLICKHOUSE_DB:-smart_wms_dw}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      CLICKHOUSE_USER: ${FLINK_CLICKHOUSE_USER:-wms_dw}
+      CLICKHOUSE_PASSWORD: ${FLINK_CLICKHOUSE_PASSWORD:-}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 4

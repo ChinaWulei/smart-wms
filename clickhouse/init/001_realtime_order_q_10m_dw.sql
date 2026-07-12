@@ -1,5 +1,8 @@
 CREATE DATABASE IF NOT EXISTS smart_wms_dw;
 
+CREATE USER IF NOT EXISTS wms_dw IDENTIFIED WITH no_password;
+GRANT SELECT, INSERT ON smart_wms_dw.* TO wms_dw;
+
 CREATE TABLE IF NOT EXISTS smart_wms_dw.dwd_order_status_change
 (
     order_id UInt64,
