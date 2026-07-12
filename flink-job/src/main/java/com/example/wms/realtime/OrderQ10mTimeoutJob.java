@@ -26,6 +26,8 @@ public class OrderQ10mTimeoutJob {
     private static final long TEN_MINUTES_MS = 10 * 60 * 1000L;
     private static final String METRIC_CODE = "CONTINUOUS_Q_ORDER_10M";
     private static final String METRIC_NAME = "\u8fde\u7eed10\u5206\u949f\u72b6\u6001\u4e3aQ\u7684\u8ba2\u5355\u6570\u91cf";
+    private static final DateTimeFormatter CLICKHOUSE_DATETIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -242,8 +244,7 @@ public class OrderQ10mTimeoutJob {
 
         private String formatTime(long epochMillis) {
             return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault())
-                    .toString()
-                    .replace('T', ' ');
+                    .format(CLICKHOUSE_DATETIME_FORMATTER);
         }
 
         @Override
