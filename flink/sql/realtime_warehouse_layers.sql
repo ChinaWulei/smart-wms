@@ -1,83 +1,37 @@
 -- Realtime order status data warehouse layers.
 --
--- PostgreSQL is only the OLTP source. Do not create DWD/DWS/ADS tables there.
+-- PostgreSQL is only the OLTP source. Do not create DWD, DWS, or ADS tables there.
+-- Debezium Kafka Connect captures PostgreSQL WAL and writes raw CDC events to Kafka ODS.
 -- Kafka is the realtime ODS layer.
 -- ClickHouse is the warehouse query layer for DWD/DWS/ADS.
 --
 -- ClickHouse init SQL creates real physical warehouse tables.
 -- Flink CREATE TABLE creates connector mappings used by Flink at runtime.
 
-CREATE TABLE cdc_outbound_orders (
-  id BIGINT,
-  created_at TIMESTAMP(3),
-  updated_at TIMESTAMP(3),
-  order_no STRING,
-  type STRING,
-  status STRING,
-  PRIMARY KEY (id) NOT ENFORCED
-) WITH (
-  'connector' = 'postgres-cdc',
-  'hostname' = 'postgres',
-  'port' = '5432',
-  'username' = 'postgres',
-  'password' = 'postgres',
-  'database-name' = 'smart_wms',
-  'schema-name' = 'public',
-  'table-name' = 'outbound_orders',
-  'slot.name' = 'flink_outbound_orders_slot',
-  'decoding.plugin.name' = 'pgoutput'
-);
-
-CREATE TABLE cdc_inbound_orders (
-  id BIGINT,
-  created_at TIMESTAMP(3),
-  updated_at TIMESTAMP(3),
-  order_no STRING,
-  type STRING,
-  status STRING,
-  PRIMARY KEY (id) NOT ENFORCED
-) WITH (
-  'connector' = 'postgres-cdc',
-  'hostname' = 'postgres',
-  'port' = '5432',
-  'username' = 'postgres',
-  'password' = 'postgres',
-  'database-name' = 'smart_wms',
-  'schema-name' = 'public',
-  'table-name' = 'inbound_orders',
-  'slot.name' = 'flink_inbound_orders_slot',
-  'decoding.plugin.name' = 'pgoutput'
-);
-
-CREATE TABLE ods_order_status_change_raw_sink (
-  orderId BIGINT,
-  orderNo STRING,
-  orderType STRING,
-  beforeStatus STRING,
-  afterStatus STRING,
-  changeTime TIMESTAMP(3),
-  eventTime TIMESTAMP(3),
-  op STRING,
-  PRIMARY KEY (orderId) NOT ENFORCED
-) WITH (
-  'connector' = 'upsert-kafka',
-  'topic' = 'ods_order_status_change_raw',
-  'properties.bootstrap.servers' = 'kafka:9092',
-  'key.format' = 'json',
-  'value.format' = 'json',
-  'value.json.timestamp-format.standard' = 'ISO-8601'
-);
-
 CREATE TABLE ods_order_status_change_raw (
-  orderId BIGINT,
-  orderNo STRING,
-  orderType STRING,
-  beforeStatus STRING,
-  afterStatus STRING,
-  changeTime TIMESTAMP(3),
-  eventTime TIMESTAMP(3),
+  `before` ROW<
+    id BIGINT,
+    created_at STRING,
+    updated_at STRING,
+    order_no STRING,
+    type STRING,
+    status STRING
+  >,
+  `after` ROW<
+    id BIGINT,
+    created_at STRING,
+    updated_at STRING,
+    order_no STRING,
+    type STRING,
+    status STRING
+  >,
+  `source` ROW<
+    db STRING,
+    schema STRING,
+    `table` STRING
+  >,
   op STRING,
-  WATERMARK FOR eventTime AS eventTime - INTERVAL '5' SECOND
+  ts_ms BIGINT
 ) WITH (
   'connector' = 'kafka',
   'topic' = 'ods_order_status_change_raw',
@@ -85,7 +39,6 @@ CREATE TABLE ods_order_status_change_raw (
   'properties.group.id' = 'wms-dwd-order-status-change',
   'scan.startup.mode' = 'earliest-offset',
   'format' = 'json',
-  'json.timestamp-format.standard' = 'ISO-8601',
   'json.ignore-parse-errors' = 'true'
 );
 
@@ -108,57 +61,33 @@ CREATE TABLE dwd_order_status_change_kafka_sink (
   'json.timestamp-format.standard' = 'ISO-8601'
 );
 
--- CDC to Kafka ODS. For a full beforeStatus value, production Debezium should
--- emit both before/after payloads. This mapping keeps the raw event contract and
--- leaves beforeStatus null when Flink CDC SQL cannot expose it directly.
-INSERT INTO ods_order_status_change_raw_sink
-SELECT
-  id * 2 + 1,
-  order_no,
-  CONCAT('OUTBOUND_', type),
-  CAST(NULL AS STRING),
-  status,
-  COALESCE(updated_at, created_at),
-  CURRENT_TIMESTAMP,
-  'u'
-FROM cdc_outbound_orders
-WHERE id IS NOT NULL
-  AND order_no IS NOT NULL
-  AND status IS NOT NULL
-UNION ALL
-SELECT
-  id * 2,
-  order_no,
-  CONCAT('INBOUND_', type),
-  CAST(NULL AS STRING),
-  status,
-  COALESCE(updated_at, created_at),
-  CURRENT_TIMESTAMP,
-  'u'
-FROM cdc_inbound_orders
-WHERE id IS NOT NULL
-  AND order_no IS NOT NULL
-  AND status IS NOT NULL;
-
--- Kafka ODS to Kafka DWD. ClickHouse consumes this topic through
+-- Debezium Kafka ODS to Kafka DWD. ClickHouse consumes this DWD topic through
 -- a Kafka Engine table and a materialized view.
 INSERT INTO dwd_order_status_change_kafka_sink
 SELECT
-  orderId,
-  TRIM(orderNo),
-  TRIM(orderType),
-  UPPER(TRIM(beforeStatus)),
-  UPPER(TRIM(afterStatus)),
-  CASE WHEN UPPER(TRIM(afterStatus)) = 'Q'
-         OR UPPER(TRIM(afterStatus)) IN ('IN_QUEUE', 'CREATED')
+  CASE WHEN `source`.`table` = 'inbound_orders'
+       THEN `after`.id * 2
+       ELSE `after`.id * 2 + 1
+  END,
+  TRIM(`after`.order_no),
+  CONCAT(
+    CASE WHEN `source`.`table` = 'inbound_orders' THEN 'INBOUND_' ELSE 'OUTBOUND_' END,
+    TRIM(`after`.type)
+  ),
+  CASE WHEN `before` IS NULL THEN CAST(NULL AS STRING) ELSE UPPER(TRIM(`before`.status)) END,
+  UPPER(TRIM(`after`.status)),
+  CASE WHEN UPPER(TRIM(`after`.status)) = 'Q'
+         OR UPPER(TRIM(`after`.status)) IN ('IN_QUEUE', 'CREATED')
        THEN 1 ELSE 0 END,
-  changeTime,
-  eventTime,
+  CAST(TO_TIMESTAMP_LTZ(ts_ms, 3) AS TIMESTAMP(3)),
+  CAST(TO_TIMESTAMP_LTZ(ts_ms, 3) AS TIMESTAMP(3)),
   op,
   CURRENT_TIMESTAMP
 FROM ods_order_status_change_raw
-WHERE orderId IS NOT NULL
-  AND orderNo IS NOT NULL
-  AND afterStatus IS NOT NULL
-  AND TRIM(orderNo) <> ''
-  AND TRIM(afterStatus) <> '';
+WHERE `after` IS NOT NULL
+  AND `after`.id IS NOT NULL
+  AND `after`.order_no IS NOT NULL
+  AND `after`.status IS NOT NULL
+  AND TRIM(`after`.order_no) <> ''
+  AND TRIM(`after`.status) <> ''
+  AND `source`.`table` IN ('inbound_orders', 'outbound_orders');

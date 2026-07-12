@@ -1,0 +1,23 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "database.hostname": "postgres",
+  "database.port": "5432",
+  "database.user": "postgres",
+  "database.password": "postgres",
+  "database.dbname": "smart_wms",
+  "topic.prefix": "smart_wms_cdc",
+  "plugin.name": "pgoutput",
+  "slot.name": "debezium_order_status_slot",
+  "publication.name": "debezium_order_status_pub",
+  "table.include.list": "public.inbound_orders,public.outbound_orders",
+  "tombstones.on.delete": "false",
+  "snapshot.mode": "initial",
+  "transforms": "route",
+  "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+  "transforms.route.regex": "smart_wms_cdc\\.public\\.(inbound_orders|outbound_orders)",
+  "transforms.route.replacement": "ods_order_status_change_raw",
+  "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "key.converter.schemas.enable": "false",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false"
+}
