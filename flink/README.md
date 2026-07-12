@@ -15,9 +15,10 @@
 ## Jobs
 
 1. `sql/realtime_warehouse_layers.sql`
-   - PostgreSQL CDC to Kafka ODS topic `ods_order_status_change_raw`
+   - PostgreSQL CDC for inbound and outbound orders to Kafka ODS topic `ods_order_status_change_raw`
    - Kafka ODS topic to ClickHouse DWD table `dwd_order_status_change`
    - Kafka ODS topic to Kafka DWD topic `dwd_order_status_change`
+   - Uses an internal numeric warehouse order id to avoid collisions: inbound `id * 2`, outbound `id * 2 + 1`
 
 2. `../flink-job/src/main/java/com/example/wms/realtime/OrderQ10mTimeoutJob.java`
    - Consumes Kafka DWD topic `dwd_order_status_change`

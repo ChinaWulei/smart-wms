@@ -28,6 +28,27 @@ CREATE TABLE cdc_outbound_orders (
   'decoding.plugin.name' = 'pgoutput'
 );
 
+CREATE TABLE cdc_inbound_orders (
+  id BIGINT,
+  created_at TIMESTAMP(3),
+  updated_at TIMESTAMP(3),
+  order_no STRING,
+  type STRING,
+  status STRING,
+  PRIMARY KEY (id) NOT ENFORCED
+) WITH (
+  'connector' = 'postgres-cdc',
+  'hostname' = 'postgres',
+  'port' = '5432',
+  'username' = 'postgres',
+  'password' = 'postgres',
+  'database-name' = 'smart_wms',
+  'schema-name' = 'public',
+  'table-name' = 'inbound_orders',
+  'slot.name' = 'flink_inbound_orders_slot',
+  'decoding.plugin.name' = 'pgoutput'
+);
+
 CREATE TABLE ods_order_status_change_raw_sink (
   orderId BIGINT,
   orderNo STRING,
@@ -92,15 +113,29 @@ CREATE TABLE dwd_order_status_change_kafka_sink (
 -- leaves beforeStatus null when Flink CDC SQL cannot expose it directly.
 INSERT INTO ods_order_status_change_raw_sink
 SELECT
-  id,
+  id * 2 + 1,
   order_no,
-  type,
+  CONCAT('OUTBOUND_', type),
   CAST(NULL AS STRING),
   status,
   COALESCE(updated_at, created_at),
   CURRENT_TIMESTAMP,
   'u'
 FROM cdc_outbound_orders
+WHERE id IS NOT NULL
+  AND order_no IS NOT NULL
+  AND status IS NOT NULL
+UNION ALL
+SELECT
+  id * 2,
+  order_no,
+  CONCAT('INBOUND_', type),
+  CAST(NULL AS STRING),
+  status,
+  COALESCE(updated_at, created_at),
+  CURRENT_TIMESTAMP,
+  'u'
+FROM cdc_inbound_orders
 WHERE id IS NOT NULL
   AND order_no IS NOT NULL
   AND status IS NOT NULL;
