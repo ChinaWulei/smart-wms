@@ -83,7 +83,7 @@ public class InventoryService {
     private String clickHouseUrl;
     @Value("${warehouse.realtime.clickhouse-database:smart_wms_dw}")
     private String clickHouseDatabase;
-    @Value("${warehouse.realtime.clickhouse-user:default}")
+    @Value("${warehouse.realtime.clickhouse-user:wms_dw}")
     private String clickHouseUser;
     @Value("${warehouse.realtime.clickhouse-password:}")
     private String clickHousePassword;
