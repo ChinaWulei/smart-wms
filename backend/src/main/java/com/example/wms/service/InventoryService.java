@@ -184,21 +184,22 @@ public class InventoryService {
             throw new BizException("ClickHouse data warehouse is not configured");
         }
         try {
-            String query = """
+            String adsTable = clickHouseDatabase + ".ads_order_q_10m_timeout_summary";
+            String query = String.format("""
                     select metric_code, metric_name, toString(metric_value), toString(update_time)
-                    from ads_order_q_10m_timeout_summary
+                    from %s
                     where metric_code = 'CONTINUOUS_Q_ORDER_10M'
                     order by update_time desc
                     limit 1
                     format TabSeparated
-                    """;
+                    """, adsTable);
             HttpRequest request = HttpRequest.newBuilder(clickHouseUri())
                     .header("Content-Type", "text/plain; charset=utf-8")
                     .POST(HttpRequest.BodyPublishers.ofString(query, StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() >= 300) {
-                throw new BizException("Failed to query ClickHouse ADS metric");
+                throw new BizException("Failed to query ClickHouse ADS metric: " + compact(response.body()));
             }
             String line = response.body().lines().filter(item -> !item.isBlank()).findFirst().orElse("");
             if (line.isBlank()) {
@@ -212,8 +213,14 @@ public class InventoryService {
         } catch (RuntimeException | java.io.IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             if (e instanceof BizException) throw (BizException) e;
-            throw new BizException("Failed to query ClickHouse ADS metric");
+            throw new BizException("Failed to query ClickHouse ADS metric: " + e.getMessage());
         }
+    }
+
+    private String compact(String value) {
+        if (value == null || value.isBlank()) return "empty response";
+        String compact = value.replaceAll("\\s+", " ").trim();
+        return compact.length() > 300 ? compact.substring(0, 300) + "..." : compact;
     }
 
     private LocalDateTime parseClickHouseTime(String value) {
