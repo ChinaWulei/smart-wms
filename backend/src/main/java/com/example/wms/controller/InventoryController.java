@@ -8,6 +8,7 @@ import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.OrderQ10mMetricView;
+import com.example.wms.dto.WmsDtos.OrderQ10mTimeoutOrderView;
 import com.example.wms.dto.WmsDtos.OutboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
@@ -168,6 +169,12 @@ public class InventoryController {
     @GetMapping("/dashboard/order/q-10m-count")
     public ApiResponse<OrderQ10mMetricView> orderQ10mCount() {
         return ApiResponse.ok(inventoryService.orderQ10mCount());
+    }
+
+    @GetMapping("/dashboard/order/q-10m-timeout-orders")
+    public ApiResponse<List<OrderQ10mTimeoutOrderView>> orderQ10mTimeoutOrders(
+            @RequestParam(defaultValue = "50") int limit) {
+        return ApiResponse.ok(inventoryService.orderQ10mTimeoutOrders(limit));
     }
 
     @PostMapping("/inventory-checks")

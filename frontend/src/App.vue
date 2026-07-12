@@ -301,24 +301,25 @@
             <table class="order-table">
               <thead>
                 <tr>
-                  <th>{{ labels.minute }}</th>
-                  <th>{{ labels.qOrderCount }}</th>
                   <th>{{ labels.orderNo }}</th>
+                  <th>{{ labels.orderType }}</th>
+                  <th>{{ labels.qStartTime }}</th>
+                  <th>{{ labels.timeoutTime }}</th>
+                  <th>{{ labels.status }}</th>
+                  <th>{{ labels.refreshedAt }}</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="minute in realtimeMinutes" :key="`row-${minute.minute}`">
-                  <td>{{ minute.minute }}</td>
-                  <td><span class="status-tag in_queue">{{ minute.count }}</span></td>
-                  <td>
-                    <div v-if="minute.orderNos?.length" class="order-chip-list">
-                      <span v-for="orderNo in minute.orderNos" :key="orderNo">{{ orderNo }}</span>
-                    </div>
-                    <span v-else class="muted">-</span>
-                  </td>
+                <tr v-for="order in realtimePanel.orders" :key="order.orderId">
+                  <td><b>{{ order.orderNo }}</b></td>
+                  <td>{{ order.orderType }}</td>
+                  <td>{{ formatTime(order.qStartTime) }}</td>
+                  <td>{{ formatTime(order.timeoutTime) }}</td>
+                  <td><span class="status-tag in_queue">{{ order.currentStatus }}</span></td>
+                  <td>{{ formatTime(order.updateTime) }}</td>
                 </tr>
-                <tr v-if="!realtimeMinutes.length">
-                  <td colspan="3" class="table-empty">{{ labels.noOrders }}</td>
+                <tr v-if="!realtimePanel.orders.length">
+                  <td colspan="6" class="table-empty">{{ labels.noOrders }}</td>
                 </tr>
               </tbody>
             </table>
@@ -1036,6 +1037,8 @@ const labels = {
   monitorWindow: '\u5f02\u5e38\u9608\u503c',
   qStatus: 'Q \u72b6\u6001',
   qOrderCount: '\u79ef\u538b\u8ba2\u5355\u6570',
+  qStartTime: '\u8fdb\u5165 Q \u65f6\u95f4',
+  timeoutTime: '\u8d85\u65f6\u65f6\u95f4',
   minute: '\u521b\u5efa\u65f6\u95f4',
   orderNo: '\u8ba2\u5355\u53f7',
   orderNoPlaceholder: '\u8f93\u5165\u8ba2\u5355\u53f7',
@@ -1219,7 +1222,7 @@ const englishLabels = {
   orderSearch: 'Order Search', orderSearchHint: 'Filter inbound and outbound orders by status, creation date, and creator',
   realtimeWarehouse: 'Realtime Warehouse Data', realtimeWarehouseHint: 'Flink realtime warehouse layers ODS, DWD, DWS, and ADS for orders that remain Q after 10 minutes',
   refreshedAt: 'Refreshed', refreshing: 'Refreshing...', monitorWindow: 'Alert Threshold', qStatus: 'Q Status',
-  qOrderCount: 'Backlog Orders', minute: 'Created At',
+  qOrderCount: 'Backlog Orders', qStartTime: 'Q Start Time', timeoutTime: 'Timeout Time', minute: 'Created At',
   orderNo: 'Order No.', orderNoPlaceholder: 'Enter order number', direction: 'Direction', allDirections: 'All Directions',
   inbound: 'Inbound', outbound: 'Outbound', creator: 'Creator', creatorPlaceholder: 'Enter creator',
   createdFrom: 'Created From', createdTo: 'Created To', createdAt: 'Created At', itemCount: 'SKU Count',
@@ -1324,7 +1327,7 @@ const shippingJobs = ref([])
 const selectedShippingJob = ref(null)
 const shippingOrdersToAdd = ref([])
 const orderSearchResults = ref([])
-const realtimePanel = ref({ statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [] })
+const realtimePanel = ref({ statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [], orders: [] })
 let realtimeTimer = null
 const distributionWarehouseId = ref(null)
 const selectedDistributionLocation = ref(null)
@@ -1581,7 +1584,7 @@ function clearWarehouseData() {
   selectedShippingJob.value = null
   shippingOrdersToAdd.value = []
   orderSearchResults.value = []
-  realtimePanel.value = { statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [] }
+  realtimePanel.value = { statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [], orders: [] }
   dashboard.value = {}
   inboundOrder.value = null
   inboundOrderDetail.value = null
@@ -2037,16 +2040,20 @@ function stopRealtimePanel() {
   realtimeTimer = null
 }
 async function loadRealtimePanel() {
-  if (!selectedWarehouseId.value || loading.realtimePanel) return
+  if (loading.realtimePanel) return
   loading.realtimePanel = true
   try {
-    const metric = await api.get('/dashboard/order/q-10m-count')
+    const [metric, orders] = await Promise.all([
+      api.get('/dashboard/order/q-10m-count'),
+      api.get('/dashboard/order/q-10m-timeout-orders')
+    ])
     realtimePanel.value = {
       statusCode: 'Q',
       windowMinutes: 10,
       refreshedAt: metric.updateTime,
       totalCount: metric.metricValue || 0,
-      minutes: []
+      minutes: [],
+      orders: orders || []
     }
   } catch (e) {
     showToast(e.message, 'error')

@@ -31,6 +31,7 @@ import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderHistoryView;
 import com.example.wms.dto.WmsDtos.OrderQ10mMetricView;
+import com.example.wms.dto.WmsDtos.OrderQ10mTimeoutOrderView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
 import com.example.wms.dto.WmsDtos.OutboundItemView;
@@ -215,6 +216,61 @@ public class InventoryService {
             if (e instanceof BizException) throw (BizException) e;
             throw new BizException("Failed to query ClickHouse ADS metric: " + e.getMessage());
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderQ10mTimeoutOrderView> orderQ10mTimeoutOrders(int limit) {
+        if (blank(clickHouseUrl)) {
+            throw new BizException("ClickHouse data warehouse is not configured");
+        }
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        try {
+            String dwsTable = clickHouseDatabase + ".dws_order_q_10m_timeout_detail";
+            String query = String.format("""
+                    select
+                      toString(order_id),
+                      order_no,
+                      order_type,
+                      toString(q_start_time),
+                      toString(timeout_time),
+                      current_status,
+                      toString(update_time)
+                    from %s final
+                    where is_timeout = 1
+                    order by timeout_time desc
+                    limit %d
+                    format TabSeparated
+                    """, dwsTable, safeLimit);
+            HttpRequest request = HttpRequest.newBuilder(clickHouseUri())
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .POST(HttpRequest.BodyPublishers.ofString(query, StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() >= 300) {
+                throw new BizException("Failed to query ClickHouse DWS timeout orders: " + compact(response.body()));
+            }
+            return response.body().lines()
+                    .filter(line -> !line.isBlank())
+                    .map(this::timeoutOrderView)
+                    .toList();
+        } catch (RuntimeException | java.io.IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (e instanceof BizException) throw (BizException) e;
+            throw new BizException("Failed to query ClickHouse DWS timeout orders: " + e.getMessage());
+        }
+    }
+
+    private OrderQ10mTimeoutOrderView timeoutOrderView(String line) {
+        String[] columns = line.split("\\t", -1);
+        if (columns.length < 7) throw new BizException("Invalid ClickHouse DWS timeout order result");
+        return new OrderQ10mTimeoutOrderView(
+                Long.parseLong(columns[0]),
+                columns[1],
+                columns[2],
+                parseClickHouseTime(columns[3]),
+                parseClickHouseTime(columns[4]),
+                columns[5],
+                parseClickHouseTime(columns[6]));
     }
 
     private String compact(String value) {
