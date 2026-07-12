@@ -286,15 +286,40 @@
             </div>
           </div>
 
-          <div class="minute-bars">
-            <article v-for="minute in realtimeMinutes" :key="minute.minute">
-              <div class="minute-bar-track">
-                <i :style="{ height: `${minuteBarHeight(minute.count)}%` }"></i>
-              </div>
-              <b>{{ minute.count }}</b>
-              <span>{{ minute.minute }}</span>
+          <div class="realtime-chart-toolbar">
+            <div>
+              <b>{{ labels.orderMetricCharts }}</b>
+              <span>{{ labels.realtimeChartHint }}</span>
+            </div>
+            <div class="segmented-control">
+              <button :class="{ active: realtimeDirection === 'INBOUND' }" @click="setRealtimeDirection('INBOUND')">
+                {{ labels.inbound }}
+              </button>
+              <button :class="{ active: realtimeDirection === 'OUTBOUND' }" @click="setRealtimeDirection('OUTBOUND')">
+                {{ labels.outbound }}
+              </button>
+            </div>
+          </div>
+
+          <div class="realtime-charts">
+            <article class="chart-panel">
+              <header>
+                <div>
+                  <b>{{ labels.orderStatusDistribution }}</b>
+                  <span>{{ directionName(realtimeDirection) }}</span>
+                </div>
+              </header>
+              <div ref="statusChartRef" class="echart-box"></div>
             </article>
-            <div v-if="!realtimeMinutes.length" class="realtime-empty">{{ labels.noOrders }}</div>
+            <article class="chart-panel">
+              <header>
+                <div>
+                  <b>{{ labels.orderCreationTrend }}</b>
+                  <span>{{ labels.lastSevenDays }}</span>
+                </div>
+              </header>
+              <div ref="trendChartRef" class="echart-box"></div>
+            </article>
           </div>
 
           <div class="table-wrap realtime-orders">
@@ -1005,6 +1030,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import * as echarts from 'echarts'
 import { api } from './api'
 
 const locale = ref(localStorage.getItem('wms-locale') || 'zh')
@@ -1039,6 +1065,11 @@ const labels = {
   qOrderCount: '\u79ef\u538b\u8ba2\u5355\u6570',
   qStartTime: '\u8fdb\u5165 Q \u65f6\u95f4',
   timeoutTime: '\u8d85\u65f6\u65f6\u95f4',
+  orderMetricCharts: '\u8ba2\u5355\u5b9e\u65f6\u6307\u6807',
+  realtimeChartHint: '\u6570\u636e\u6bcf 30 \u79d2\u81ea\u52a8\u5237\u65b0\uff0c\u56fe\u8868\u4f1a\u52a8\u6001\u8fc7\u6e21',
+  orderStatusDistribution: '\u5404\u72b6\u6001\u8ba2\u5355\u6570',
+  orderCreationTrend: '\u8fd1 7 \u5929\u65b0\u589e\u8ba2\u5355',
+  lastSevenDays: '\u6700\u8fd1 7 \u5929',
   minute: '\u521b\u5efa\u65f6\u95f4',
   orderNo: '\u8ba2\u5355\u53f7',
   orderNoPlaceholder: '\u8f93\u5165\u8ba2\u5355\u53f7',
@@ -1222,7 +1253,10 @@ const englishLabels = {
   orderSearch: 'Order Search', orderSearchHint: 'Filter inbound and outbound orders by status, creation date, and creator',
   realtimeWarehouse: 'Realtime Warehouse Data', realtimeWarehouseHint: 'Flink realtime warehouse layers ODS, DWD, DWS, and ADS for orders that remain Q after 10 minutes',
   refreshedAt: 'Refreshed', refreshing: 'Refreshing...', monitorWindow: 'Alert Threshold', qStatus: 'Q Status',
-  qOrderCount: 'Backlog Orders', qStartTime: 'Q Start Time', timeoutTime: 'Timeout Time', minute: 'Created At',
+  qOrderCount: 'Backlog Orders', qStartTime: 'Q Start Time', timeoutTime: 'Timeout Time',
+  orderMetricCharts: 'Realtime Order Metrics', realtimeChartHint: 'Auto-refreshes every 30 seconds with animated chart updates',
+  orderStatusDistribution: 'Orders by Status', orderCreationTrend: 'New Orders in 7 Days', lastSevenDays: 'Last 7 days',
+  minute: 'Created At',
   orderNo: 'Order No.', orderNoPlaceholder: 'Enter order number', direction: 'Direction', allDirections: 'All Directions',
   inbound: 'Inbound', outbound: 'Outbound', creator: 'Creator', creatorPlaceholder: 'Enter creator',
   createdFrom: 'Created From', createdTo: 'Created To', createdAt: 'Created At', itemCount: 'SKU Count',
@@ -1305,6 +1339,7 @@ function switchLanguage() {
       sub.label = locale.value === 'en' ? (submoduleEnglish[sub.key] || sub.label) : submoduleChinese[sub.key]
     })
   })
+  nextTick(updateRealtimeCharts)
 }
 
 const user = ref(JSON.parse(localStorage.getItem('wms-user') || 'null'))
@@ -1327,8 +1362,13 @@ const shippingJobs = ref([])
 const selectedShippingJob = ref(null)
 const shippingOrdersToAdd = ref([])
 const orderSearchResults = ref([])
-const realtimePanel = ref({ statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [], orders: [] })
+const realtimePanel = ref({ statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [], orders: [], statusCounts: [], creationTrend: [] })
+const realtimeDirection = ref('INBOUND')
+const statusChartRef = ref(null)
+const trendChartRef = ref(null)
 let realtimeTimer = null
+let statusChart = null
+let trendChart = null
 const distributionWarehouseId = ref(null)
 const selectedDistributionLocation = ref(null)
 const selectedDistributionShelfCode = ref('')
@@ -1584,7 +1624,7 @@ function clearWarehouseData() {
   selectedShippingJob.value = null
   shippingOrdersToAdd.value = []
   orderSearchResults.value = []
-  realtimePanel.value = { statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [], orders: [] }
+  realtimePanel.value = { statusCode: 'Q', windowMinutes: 10, refreshedAt: '', totalCount: 0, minutes: [], orders: [], statusCounts: [], creationTrend: [] }
   dashboard.value = {}
   inboundOrder.value = null
   inboundOrderDetail.value = null
@@ -2030,6 +2070,8 @@ async function resetOrderSearch() {
   await searchOrders()
 }
 async function startRealtimePanel() {
+  await nextTick()
+  initRealtimeCharts()
   await loadRealtimePanel()
   stopRealtimePanel()
   realtimeTimer = window.setInterval(loadRealtimePanel, 30000)
@@ -2042,10 +2084,13 @@ function stopRealtimePanel() {
 async function loadRealtimePanel() {
   if (loading.realtimePanel) return
   loading.realtimePanel = true
+  const direction = realtimeDirection.value
   try {
-    const [metric, orders] = await Promise.all([
+    const [metric, orders, statusCounts, creationTrend] = await Promise.all([
       api.get('/dashboard/order/q-10m-count'),
-      api.get('/dashboard/order/q-10m-timeout-orders')
+      api.get('/dashboard/order/q-10m-timeout-orders'),
+      api.get(`/dashboard/order/status-counts?direction=${encodeURIComponent(direction)}`),
+      api.get(`/dashboard/order/creation-trend?direction=${encodeURIComponent(direction)}&days=7`)
     ])
     realtimePanel.value = {
       statusCode: 'Q',
@@ -2053,13 +2098,97 @@ async function loadRealtimePanel() {
       refreshedAt: metric.updateTime,
       totalCount: metric.metricValue || 0,
       minutes: [],
-      orders: orders || []
+      orders: orders || [],
+      statusCounts: statusCounts || [],
+      creationTrend: creationTrend || []
     }
+    await nextTick()
+    updateRealtimeCharts()
   } catch (e) {
     showToast(e.message, 'error')
   } finally {
     loading.realtimePanel = false
+    if (direction !== realtimeDirection.value) loadRealtimePanel()
   }
+}
+async function setRealtimeDirection(direction) {
+  if (realtimeDirection.value === direction) return
+  realtimeDirection.value = direction
+  await loadRealtimePanel()
+}
+function initRealtimeCharts() {
+  if (statusChartRef.value && !statusChart) statusChart = echarts.init(statusChartRef.value)
+  if (trendChartRef.value && !trendChart) trendChart = echarts.init(trendChartRef.value)
+  updateRealtimeCharts()
+}
+function updateRealtimeCharts() {
+  if (!statusChartRef.value || !trendChartRef.value) return
+  if (!statusChart || !trendChart) initRealtimeCharts()
+  if (!statusChart || !trendChart) return
+  const statusRows = realtimePanel.value.statusCounts || []
+  const statusNames = statusRows.length ? statusRows.map(item => orderStatus(item.status)) : [labels.noOrders]
+  const statusValues = statusRows.length ? statusRows.map(item => Number(item.count || 0)) : [0]
+  statusChart.setOption({
+    animationDuration: 700,
+    animationDurationUpdate: 700,
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 44, right: 18, top: 18, bottom: 34 },
+    xAxis: { type: 'category', data: statusNames, axisLabel: { color: '#667085', interval: 0, rotate: statusNames.length > 4 ? 25 : 0 } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#667085' }, splitLine: { lineStyle: { color: '#e5edf5' } } },
+    series: [{
+      type: 'bar',
+      data: statusValues,
+      barMaxWidth: 44,
+      itemStyle: { color: '#1769aa', borderRadius: [6, 6, 0, 0] },
+      emphasis: { itemStyle: { color: '#0f8f83' } }
+    }]
+  }, true)
+
+  const trendRows = filledCreationTrend()
+  trendChart.setOption({
+    animationDuration: 700,
+    animationDurationUpdate: 700,
+    tooltip: { trigger: 'axis' },
+    grid: { left: 44, right: 18, top: 18, bottom: 34 },
+    xAxis: { type: 'category', boundaryGap: false, data: trendRows.map(item => item.label), axisLabel: { color: '#667085' } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#667085' }, splitLine: { lineStyle: { color: '#e5edf5' } } },
+    series: [{
+      type: 'line',
+      smooth: true,
+      showSymbol: true,
+      symbolSize: 7,
+      data: trendRows.map(item => item.count),
+      lineStyle: { width: 3, color: '#0f8f83' },
+      itemStyle: { color: '#0f8f83' },
+      areaStyle: { color: 'rgba(15, 143, 131, 0.14)' }
+    }]
+  }, true)
+}
+function filledCreationTrend() {
+  const rows = new Map((realtimePanel.value.creationTrend || []).map(item => [item.date, Number(item.count || 0)]))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(today)
+    day.setDate(today.getDate() - (6 - index))
+    const key = dateKey(day)
+    return { date: key, label: key.slice(5), count: rows.get(key) || 0 }
+  })
+}
+function dateKey(date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+function resizeRealtimeCharts() {
+  statusChart?.resize()
+  trendChart?.resize()
+}
+function disposeRealtimeCharts() {
+  statusChart?.dispose()
+  trendChart?.dispose()
+  statusChart = null
+  trendChart = null
 }
 function emptyRealtimeMinutes() {
   const now = new Date()
@@ -2620,6 +2749,7 @@ onMounted(async () => {
   window.addEventListener('pointerup', stopAiDrag)
   window.addEventListener('pointercancel', stopAiDrag)
   window.addEventListener('resize', clampAiPosition)
+  window.addEventListener('resize', resizeRealtimeCharts)
   window.addEventListener('popstate', syncRoute)
   if (user.value) {
     await Promise.all([loadWarehouses(), loadProducts()])
@@ -2632,10 +2762,12 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   stopRealtimePanel()
+  disposeRealtimeCharts()
   window.removeEventListener('pointermove', moveAiDrag)
   window.removeEventListener('pointerup', stopAiDrag)
   window.removeEventListener('pointercancel', stopAiDrag)
   window.removeEventListener('resize', clampAiPosition)
+  window.removeEventListener('resize', resizeRealtimeCharts)
   window.removeEventListener('popstate', syncRoute)
 })
 </script>

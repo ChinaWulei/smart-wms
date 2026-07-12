@@ -7,8 +7,10 @@ import com.example.wms.dto.WmsDtos.InboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.InboundOrderView;
 import com.example.wms.dto.WmsDtos.OrderSearchView;
 import com.example.wms.dto.WmsDtos.OrderSummaryView;
+import com.example.wms.dto.WmsDtos.OrderCreationTrendView;
 import com.example.wms.dto.WmsDtos.OrderQ10mMetricView;
 import com.example.wms.dto.WmsDtos.OrderQ10mTimeoutOrderView;
+import com.example.wms.dto.WmsDtos.OrderStatusCountView;
 import com.example.wms.dto.WmsDtos.OutboundOrderDetailView;
 import com.example.wms.dto.WmsDtos.ReceiveRequest;
 import com.example.wms.dto.WmsDtos.ScanLocationView;
@@ -175,6 +177,19 @@ public class InventoryController {
     public ApiResponse<List<OrderQ10mTimeoutOrderView>> orderQ10mTimeoutOrders(
             @RequestParam(defaultValue = "50") int limit) {
         return ApiResponse.ok(inventoryService.orderQ10mTimeoutOrders(limit));
+    }
+
+    @GetMapping("/dashboard/order/status-counts")
+    public ApiResponse<List<OrderStatusCountView>> orderStatusCounts(
+            @RequestParam(defaultValue = "INBOUND") String direction) {
+        return ApiResponse.ok(inventoryService.orderStatusCounts(direction));
+    }
+
+    @GetMapping("/dashboard/order/creation-trend")
+    public ApiResponse<List<OrderCreationTrendView>> orderCreationTrend(
+            @RequestParam(defaultValue = "INBOUND") String direction,
+            @RequestParam(defaultValue = "7") int days) {
+        return ApiResponse.ok(inventoryService.orderCreationTrend(direction, days));
     }
 
     @PostMapping("/inventory-checks")

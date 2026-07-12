@@ -38,6 +38,8 @@ public class WmsDtos {
     public record OrderQ10mTimeoutOrderView(Long orderId, String orderNo, String orderType,
                                             LocalDateTime qStartTime, LocalDateTime timeoutTime,
                                             String currentStatus, LocalDateTime updateTime) {}
+    public record OrderStatusCountView(String status, Long count) {}
+    public record OrderCreationTrendView(String date, Long count) {}
     public record OutboundItemView(Long itemId, Long productId, String sku, String barcode, String productName,
                                    String modelSpec, String unitName, Integer quantity, Integer allocatedQuantity,
                                    Integer pickedQuantity, String pickingStatus,
