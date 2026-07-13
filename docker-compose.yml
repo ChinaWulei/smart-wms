@@ -242,6 +242,7 @@ services:
     build:
       context: ./frontend
       args:
+        NGINX_CONF: nginx.conf
         VITE_API_BASE: /api
     depends_on:
       - backend
