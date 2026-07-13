@@ -5,10 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -26,6 +31,11 @@ public class OrderQ10mTimeoutJob {
     private static final long TEN_MINUTES_MS = 10 * 60 * 1000L;
     private static final String METRIC_CODE = "CONTINUOUS_Q_ORDER_10M";
     private static final String METRIC_NAME = "\u8fde\u7eed10\u5206\u949f\u72b6\u6001\u4e3aQ\u7684\u8ba2\u5355\u6570\u91cf";
+    private static final String[] DIRECTIONS = {"INBOUND", "OUTBOUND"};
+    private static final String[] KNOWN_STATUSES = {
+            "CREATED", "IN_QUEUE", "RECEIVING", "RECEIVED", "ALLOCATED", "NOT_ENOUGH_INV",
+            "READY_TO_PICK", "PICKING", "PICKED", "PACKED", "COMPLETED", "CANCELLED"
+    };
     private static final DateTimeFormatter CLICKHOUSE_DATETIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -76,6 +86,8 @@ public class OrderQ10mTimeoutJob {
 
         @Override
         public void processElement(OrderStatusChange change, Context context, Collector<Void> out) throws Exception {
+            writer.refreshAdsOrderCharts();
+
             OrderRuntimeState current = state.value();
             boolean isQ = isQStatus(change.afterStatus);
             long now = System.currentTimeMillis();
@@ -197,6 +209,8 @@ public class OrderQ10mTimeoutJob {
         private final Connection connection;
         private final PreparedStatement dws;
         private final PreparedStatement ads;
+        private final PreparedStatement adsStatusCount;
+        private final PreparedStatement adsCreationTrend;
 
         ClickHouseWriter() throws Exception {
             Class.forName("com.clickhouse.jdbc.ClickHouseDriver");
@@ -222,6 +236,16 @@ public class OrderQ10mTimeoutJob {
                     from dws_order_q_10m_timeout_detail final
                     where is_timeout = 1
                     """);
+            adsStatusCount = connection.prepareStatement("""
+                    insert into ads_order_status_count
+                    (direction, status, order_count, update_time)
+                    values (?, ?, ?, now())
+                    """);
+            adsCreationTrend = connection.prepareStatement("""
+                    insert into ads_order_creation_7d_trend
+                    (direction, metric_date, order_count, update_time)
+                    values (?, ?, ?, now())
+                    """);
         }
 
         void upsertDws(Long orderId, String orderNo, String orderType, long qStartTime, long timeoutTime,
@@ -242,6 +266,77 @@ public class OrderQ10mTimeoutJob {
             ads.executeUpdate();
         }
 
+        void refreshAdsOrderCharts() throws Exception {
+            refreshAdsStatusCounts();
+            refreshAdsCreationTrend();
+        }
+
+        private void refreshAdsStatusCounts() throws Exception {
+            Map<String, Long> counts = new HashMap<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet resultSet = statement.executeQuery("""
+                         select direction, latest_status, count()
+                         from (
+                           select
+                             if(startsWith(order_type, 'OUTBOUND_'), 'OUTBOUND', 'INBOUND') as direction,
+                             order_id,
+                             argMax(after_status, event_time) as latest_status
+                           from dwd_order_status_change
+                           group by direction, order_id
+                         )
+                         where latest_status <> ''
+                         group by direction, latest_status
+                         """)) {
+                while (resultSet.next()) {
+                    counts.put(resultSet.getString(1) + "|" + resultSet.getString(2), resultSet.getLong(3));
+                }
+            }
+
+            for (String direction : DIRECTIONS) {
+                for (String status : KNOWN_STATUSES) {
+                    adsStatusCount.setString(1, direction);
+                    adsStatusCount.setString(2, status);
+                    adsStatusCount.setLong(3, counts.getOrDefault(direction + "|" + status, 0L));
+                    adsStatusCount.addBatch();
+                }
+            }
+            adsStatusCount.executeBatch();
+        }
+
+        private void refreshAdsCreationTrend() throws Exception {
+            Map<String, Long> counts = new HashMap<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet resultSet = statement.executeQuery("""
+                         select direction, day, count()
+                         from (
+                           select
+                             if(startsWith(order_type, 'OUTBOUND_'), 'OUTBOUND', 'INBOUND') as direction,
+                             order_id,
+                             toDate(min(event_time)) as day
+                           from dwd_order_status_change
+                           group by direction, order_id
+                         )
+                         where day >= today() - 6
+                         group by direction, day
+                         """)) {
+                while (resultSet.next()) {
+                    counts.put(resultSet.getString(1) + "|" + resultSet.getString(2), resultSet.getLong(3));
+                }
+            }
+
+            LocalDate today = LocalDate.now();
+            for (String direction : DIRECTIONS) {
+                for (int i = 6; i >= 0; i--) {
+                    LocalDate day = today.minusDays(i);
+                    adsCreationTrend.setString(1, direction);
+                    adsCreationTrend.setString(2, day.toString());
+                    adsCreationTrend.setLong(3, counts.getOrDefault(direction + "|" + day, 0L));
+                    adsCreationTrend.addBatch();
+                }
+            }
+            adsCreationTrend.executeBatch();
+        }
+
         private String formatTime(long epochMillis) {
             return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault())
                     .format(CLICKHOUSE_DATETIME_FORMATTER);
@@ -249,6 +344,8 @@ public class OrderQ10mTimeoutJob {
 
         @Override
         public void close() throws Exception {
+            adsCreationTrend.close();
+            adsStatusCount.close();
             dws.close();
             ads.close();
             connection.close();

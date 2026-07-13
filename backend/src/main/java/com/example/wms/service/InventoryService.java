@@ -268,30 +268,23 @@ public class InventoryService {
             throw new BizException("ClickHouse data warehouse is not configured");
         }
         try {
-            String dwdTable = clickHouseDatabase + ".dwd_order_status_change";
-            String prefix = orderTypePrefix(direction);
+            String adsTable = clickHouseDatabase + ".ads_order_status_count";
+            String safeDirection = orderDirection(direction);
             String query = String.format("""
-                    select latest_status, toString(count())
-                    from (
-                      select
-                        order_id,
-                        argMax(after_status, event_time) as latest_status
-                      from %s
-                      where startsWith(order_type, '%s')
-                      group by order_id
-                    )
-                    where latest_status <> ''
-                    group by latest_status
-                    order by latest_status
+                    select status, toString(order_count)
+                    from %s final
+                    where direction = '%s'
+                      and order_count > 0
+                    order by status
                     format TabSeparated
-                    """, dwdTable, prefix);
-            return queryClickHouse(query, "Failed to query ClickHouse DWD status counts").stream()
+                    """, adsTable, safeDirection);
+            return queryClickHouse(query, "Failed to query ClickHouse ADS status counts").stream()
                     .map(this::statusCountView)
                     .toList();
         } catch (RuntimeException | java.io.IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             if (e instanceof BizException) throw (BizException) e;
-            throw new BizException("Failed to query ClickHouse DWD status counts: " + e.getMessage());
+            throw new BizException("Failed to query ClickHouse ADS status counts: " + e.getMessage());
         }
     }
 
@@ -302,30 +295,23 @@ public class InventoryService {
         }
         int safeDays = Math.max(1, Math.min(days, 30));
         try {
-            String dwdTable = clickHouseDatabase + ".dwd_order_status_change";
-            String prefix = orderTypePrefix(direction);
+            String adsTable = clickHouseDatabase + ".ads_order_creation_7d_trend";
+            String safeDirection = orderDirection(direction);
             String query = String.format("""
-                    select toString(day), toString(count())
-                    from (
-                      select
-                        order_id,
-                        toDate(min(event_time)) as day
-                      from %s
-                      where startsWith(order_type, '%s')
-                      group by order_id
-                    )
-                    where day >= today() - %d
-                    group by day
-                    order by day
+                    select toString(metric_date), toString(order_count)
+                    from %s final
+                    where direction = '%s'
+                      and metric_date >= today() - %d
+                    order by metric_date
                     format TabSeparated
-                    """, dwdTable, prefix, safeDays - 1);
-            return queryClickHouse(query, "Failed to query ClickHouse DWD order creation trend").stream()
+                    """, adsTable, safeDirection, safeDays - 1);
+            return queryClickHouse(query, "Failed to query ClickHouse ADS order creation trend").stream()
                     .map(this::creationTrendView)
                     .toList();
         } catch (RuntimeException | java.io.IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             if (e instanceof BizException) throw (BizException) e;
-            throw new BizException("Failed to query ClickHouse DWD order creation trend: " + e.getMessage());
+            throw new BizException("Failed to query ClickHouse ADS order creation trend: " + e.getMessage());
         }
     }
 
@@ -367,8 +353,8 @@ public class InventoryService {
         return response.body().lines().filter(line -> !line.isBlank()).toList();
     }
 
-    private String orderTypePrefix(String direction) {
-        return "OUTBOUND".equalsIgnoreCase(direction) ? "OUTBOUND_" : "INBOUND_";
+    private String orderDirection(String direction) {
+        return "OUTBOUND".equalsIgnoreCase(direction) ? "OUTBOUND" : "INBOUND";
     }
 
     private String compact(String value) {

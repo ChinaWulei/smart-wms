@@ -79,3 +79,23 @@ CREATE TABLE IF NOT EXISTS smart_wms_dw.ads_order_q_10m_timeout_summary
 )
 ENGINE = ReplacingMergeTree(update_time)
 ORDER BY metric_code;
+
+CREATE TABLE IF NOT EXISTS smart_wms_dw.ads_order_status_count
+(
+    direction LowCardinality(String),
+    status LowCardinality(String),
+    order_count UInt64,
+    update_time DateTime
+)
+ENGINE = ReplacingMergeTree(update_time)
+ORDER BY (direction, status);
+
+CREATE TABLE IF NOT EXISTS smart_wms_dw.ads_order_creation_7d_trend
+(
+    direction LowCardinality(String),
+    metric_date Date,
+    order_count UInt64,
+    update_time DateTime
+)
+ENGINE = ReplacingMergeTree(update_time)
+ORDER BY (direction, metric_date);

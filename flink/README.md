@@ -28,6 +28,7 @@ Debezium Kafka Connect captures PostgreSQL `inbound_orders` and `outbound_orders
    - Registers a 10 minute timer when an order enters Q
    - Writes ClickHouse DWS table `dws_order_q_10m_timeout_detail`
    - Updates ClickHouse ADS table `ads_order_q_10m_timeout_summary`
+   - Refreshes ClickHouse ADS tables `ads_order_status_count` and `ads_order_creation_7d_trend` for dashboard charts
 
 ## Build Flink Image
 
